@@ -1,8 +1,8 @@
 import logging
 
-from dataclasses import dataclass
 from pathlib import Path
 from ..config import Settings
+from ..model.image import ImageInfo
 
 logger = logging.getLogger(__name__)
 
@@ -23,19 +23,6 @@ class UnsupportedImageTypeError(Exception):
     def __init__(self, detected_type: str):
         self.detected_type = detected_type
         super().__init__(f"Unsupported image type: {detected_type}")
-
-
-@dataclass
-class ImageInfo:
-    media_type: str
-    size_bytes: int
-    content: bytes
-
-
-@dataclass
-class TempImageInfo:
-    image_id: str
-    file_path: str
 
 
 class ImageService:
