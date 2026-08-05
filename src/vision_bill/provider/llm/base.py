@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from pathlib import Path
 from fastapi import UploadFile
 from pydantic import ValidationError
 
@@ -29,14 +30,12 @@ class LLMProvider(ABC):
         """Return the models this provider currently exposes."""
 
     @abstractmethod
-    async def analyse_receipt_from_model(self, model_id: str, image: UploadFile) -> Receipt:
+    async def analyse_receipt_from_model(self, model_id: str, image: Path) -> Receipt:
         """Send an image + prompt to the given model and return the result."""
-
 
     @abstractmethod
     async def send_message(self, model_id: str, messages: Sequence[Mapping[str, Any]]) -> str:
         """Send a message to the given model and return the response."""
-
 
     def build_prompt(self) -> str:
         """Build a prompt for the LLM to analyze an image."""
@@ -46,7 +45,6 @@ class LLMProvider(ABC):
 
     {Receipt.model_json_schema()}
     """
-
 
     def parse_llm_response(self, response: str) -> Receipt:
         """Parse the LLM response into a Receipt object."""
