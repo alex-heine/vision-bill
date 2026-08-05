@@ -25,6 +25,8 @@ class LLMSettings(BaseModel):
 class ApiSettings(BaseModel):
     port: int = 8080
     log_level: str = 'INFO'
+    save_dir: str = "/app/uploads/"
+    tmp_dir: str = "/app/uploads_tmp/"
 
 
 class PGSettings(BaseModel):

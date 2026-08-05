@@ -2,10 +2,12 @@ import logging
 
 from dataclasses import dataclass
 from pathlib import Path
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
 import magic
+
 
 ALLOWED_IMAGE_TYPES = {
     "image/jpeg",
@@ -42,7 +44,8 @@ class ImageService:
     def __init__(self, sniff_chunk_size: int = 4096):
         self._sniff_chunk_size = sniff_chunk_size
         self._magic = magic.Magic(mime=True)
-        self._tmp_dir = Path("/app/uploads/tmp")
+        settings = Settings()
+        self._tmp_dir = Path(settings.api.tmp_dir)
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
 
     def get_media_type(self, content: bytes) -> str:

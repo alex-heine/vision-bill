@@ -10,7 +10,7 @@ This document provides technical context for agents working on the vision-bill p
 - **Web Framework**: FastAPI, Uvicorn
 - **LLM Engine**: Ollama (Local inference)
 - **Database**: PostgreSQL (`asyncpg`)
-- **Core Libraries**: 
+- **Core Libraries**:
     - `pydantic`: Data validation and settings management.
     - `httpx`: Asynchronous HTTP client.
     - `python-magic`: File type identification.
@@ -33,7 +33,19 @@ An abstraction layer for LLM interaction:
 - `src/vision_bill/model`: Defines Pydantic models (e.g., `Receipt`) used for schema enforcement.
 - `src/vision_bill/config.py`: Centralized configuration using nested environment variables (e.g., `LLM__MODEL_NAME`).
 
-## Development Context
-- **Testing**: Functional tests are located in `scripts/` and unit tests in `tests/`. Ground truth data for model evaluation is in `tests/data/`.
-- **Privacy**: Always ensure that data processing remains local unless explicitly configured otherwise.
-- **LLM Interaction**: When adding new providers, inherit from the base provider to maintain compatibility with the self-correction logic.
+## Development Workflow
+- **Package Manager**: Uses `uv`. Use `uv` for installing dependencies and running commands.
+- **Run App**: `uvicorn src.vision_bill.main:app --host 0.0.0.0 --port 8080 --reload --reload-dir ./src/vision_bill`
+- **Lint & Typecheck**: Run `ruff check .` and `mypy .` (ensure project root context).
+- **Testing**:
+  - Unit tests: `pytest tests/`
+  - Functional tests: See `scripts/run_functional_tests.py`. Requires specific data in `tests/data/`.
+
+## Operational Notes & Constraints
+- **Local Inference Only**: All LLM interactions are local via Ollama. Ensure vision models (e.g., Llama3-Vision, Moondream) are pre-downloaded on the host.
+- **File Detection**: Uses `python-magic` for identifying file types; ensure this library is available in the environment.
+- **Privacy**: PII never leaves the local machine. Do not propose any external API calls for data processing unless explicitly requested and approved.
+
+## Contextual Hints
+- Entry point: `src/vision_bill/main.py`
+- Configuration: Managed via `src/vision_bill/config.py` using nested environment variables (e.g., `LLM__MODEL_NAME`).
