@@ -18,16 +18,18 @@ ALLOWED_IMAGE_TYPES = {
     "image/gif",
 }
 
+
 class UnsupportedImageTypeError(Exception):
     """Raised when uploaded file is not an accepted image type."""
+
     def __init__(self, detected_type: str):
         self.detected_type = detected_type
         super().__init__(f"Unsupported image type: {detected_type}")
 
 
-
 class MagicService:
     """Wrapper for magic to only be loaded once"""
+
     def __init__(self):
         self.magic = magic.Magic(mime=True)
 
@@ -74,5 +76,15 @@ class ImageService:
             content=content,
         )
 
-    def store_tmp_image(self, content: bytes):
-        print("TODO")
+    def store_tmp_image(self, content: bytes) -> Path:
+        """Writes content to a unique temporary file and returns the path."""
+        import uuid
+
+        file_id = str(uuid.uuid4())
+        # Use a consistent extension or derive it if needed; .png is safe for vision models
+        tmp_path = self._tmp_dir / f"temp_{file_id}.png"
+
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+
+        return tmp_path

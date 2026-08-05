@@ -19,14 +19,16 @@ from ...provider.llm.base import LLMProvider, ModelInfo
 try:
     from ollama import AsyncClient
 except ImportError:
-    raise ImportError("The 'ollama' package is required for OllamaProvider. Please install it with 'uv add ollama'.")
+    raise ImportError(
+        "The 'ollama' package is required for OllamaProvider. Please install it with 'uv add ollama'."
+    )
 
 
 logger = logging.getLogger(__name__)
 
 
-VISION_CAPABILITY_FIELD = 'vision'
-STRUCTURED_CAPABILITY_FIELD = 'structured'
+VISION_CAPABILITY_FIELD = "vision"
+STRUCTURED_CAPABILITY_FIELD = "structured"
 RETRY_LIMIT = 3
 
 
@@ -57,7 +59,7 @@ class OllamaProvider(LLMProvider):
 
         return result
 
-    async def analyse_receipt_from_model(self, model_id: str, image: UploadFile) -> Receipt:
+    async def analyse_receipt_from_model(self, model_id: str, image: Path) -> Receipt:
         messages = self._build_image_messages(image)
 
         last_error: Exception | None = None
@@ -71,7 +73,6 @@ class OllamaProvider(LLMProvider):
 
             logger.warning(f"Attempt {attempt}/{RETRY_LIMIT}: model returned content: {content}")
 
-
             if bool(re.search(r"provide.*image", content, re.IGNORECASE | re.DOTALL)):
                 raise ValueError(
                     f"Model '{model_id}' returned a message indicating it cannot process images. "
@@ -83,7 +84,9 @@ class OllamaProvider(LLMProvider):
             except ValueError as e:
                 logger.warning(
                     "Attempt %d/%d: failed to parse LLM response: %s",
-                    attempt, RETRY_LIMIT, e,
+                    attempt,
+                    RETRY_LIMIT,
+                    e,
                 )
                 last_error = e
                 # Feed the parse error back so the retry has a chance to self-correct
@@ -93,28 +96,24 @@ class OllamaProvider(LLMProvider):
             f"Failed to get a valid response from model '{model_id}' after {RETRY_LIMIT} attempts"
         ) from last_error
 
-
     async def send_message(self, model_id: str, messages: Sequence[Mapping[str, Any]]) -> str:
         response = await self._client.chat(
             model=model_id,
             # format=Receipt.model_json_schema(),
             messages=messages,
-            options={ 'temperature': 0.0 }
+            options={"temperature": 0.0},
         )
 
         return response.message.content or ""
 
-    def _build_image_messages(
-        self, image: UploadFile
-    ) -> list[dict[str, Any]]:
-        path = Path('/app/uploads/very-long-hit.png')
-        if not path.exists():
-            raise FileNotFoundError(f'Image not found at: {path}')
+    def _build_image_messages(self, image: Path) -> list[dict[str, Any]]:
+        if not image.exists():
+            raise FileNotFoundError(f"Image not found at: {image}")
         return [
             {
                 "role": "user",
                 "content": self.build_prompt(),
-                "images": [path]
+                "images": [image],
             }
         ]
 
