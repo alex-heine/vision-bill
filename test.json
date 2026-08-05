@@ -1,0 +1,29 @@
+{'filename': './data/bauhaus.jpeg', 'media_type': 'image/jpeg', 'size_bytes': 991768, 'models': [
+        {'id': 'hf.co/sahilchachra/Unlimited-OCR-GGUF:BF16', 'parameter_size': '2.93B', 'capabilities': ['completion', 'vision'
+            ]
+        },
+        {'id': 'qwen3.5: 0.8b', 'parameter_size': '873.44M', 'capabilities': ['completion', 'vision', 'tools', 'thinking'
+            ]
+        },
+        {'id': 'hf.co/empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF:Q8_0', 'parameter_size': '8.95B', 'capabilities': ['tools', 'thinking', 'completion', 'vision'
+            ]
+        },
+        {'id': 'hf.co/unsloth/gemma-4-E4B-it-qat-GGUF:UD-Q4_K_XL', 'parameter_size': '7.46B', 'capabilities': ['tools', 'completion', 'vision', 'audio'
+            ]
+        },
+        {'id': 'glm-ocr:latest', 'parameter_size': '1.1B', 'capabilities': ['completion', 'vision', 'tools'
+            ]
+        },
+        {'id': 'gemma4:e4b', 'parameter_size': '8.0B', 'capabilities': ['completion', 'vision', 'audio', 'tools', 'thinking'
+            ]
+        }
+    ], 'llm_response': {'merchant_name': 'BAUHAUS', 'merchant_address': 'Gerhardstraße 2,
+        53225 Bonn', 'receipt_number': 'Trace-Nr. 289129', 'date': '2026-03-23', 'time': '14: 43', 'currency': 'EUR', 'line_items': [
+            {'description': 'EZY STORAGE 75L BOX', 'quantity': 4.0, 'unit_price': '26.5', 'total_price': '106', 'category': 'other'
+            }
+        ], 'taxes': [
+            {'name': 'MWST', 'rate': 0.19, 'amount': '16.92'
+            }
+        ], 'subtotal': '89.08', 'discount_total': '0', 'tax_total': '16.92', 'tip': None, 'total': '106', 'payment_method': 'unknown'
+    }
+}
