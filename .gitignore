@@ -1,6 +1,8 @@
 # Personal test data
 tests/data
 
+docs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
