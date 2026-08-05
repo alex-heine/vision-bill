@@ -49,3 +49,9 @@ An abstraction layer for LLM interaction:
 ## Contextual Hints
 - Entry point: `src/vision_bill/main.py`
 - Configuration: Managed via `src/vision_bill/config.py` using nested environment variables (e.g., `LLM__MODEL_NAME`).
+
+## Edit files
+- The edit tool matches oldString byte-for-byte. Read the file again immediately before each edit, and again after every successful edit line content shifts.
+- Copy oldString verbatim from the file you just read. Do not retype, reindent or normalise it. Preserve tabs, trailing spaces and blank lines.
+- Keep oldString to the smallest span that is still unique — usually one or two lines, not a whole block.
+- After two failed edits on the same file, stop and report. Do not switch to rewriting the file.

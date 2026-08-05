@@ -25,13 +25,23 @@ class UnsupportedImageTypeError(Exception):
         super().__init__(f"Unsupported image type: {detected_type}")
 
 
+
+class MagicService:
+    """Wrapper for magic to only be loaded once"""
+    def __init__(self):
+        self.magic = magic.Magic(mime=True)
+
+
+# Singleton instance — reuse across requests instead of
+# reconstructing magic.Magic() every call
+magic_service = MagicService()
+
+
 class ImageService:
     """Handles image inspection and validation."""
 
-    def __init__(self, sniff_chunk_size: int = 4096):
+    def __init__(self, settings: Settings, sniff_chunk_size: int = 4096):
         self._sniff_chunk_size = sniff_chunk_size
-        self._magic = magic.Magic(mime=True)
-        settings = Settings()
         self._tmp_dir = Path(settings.api.tmp_dir)
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -41,7 +51,7 @@ class ImageService:
         so this is cheap even for large files.
         """
         chunk = content[: self._sniff_chunk_size]
-        media_type = self._magic.from_buffer(chunk)
+        media_type = magic_service.magic.from_buffer(chunk)
         logger.debug("Detected media type: %s", media_type)
         return media_type
 
@@ -66,7 +76,3 @@ class ImageService:
 
     def store_tmp_image(self, content: bytes):
         print("TODO")
-
-# Singleton instance — reuse across requests instead of
-# reconstructing magic.Magic() every call
-image_service = ImageService()
