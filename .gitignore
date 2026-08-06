@@ -1,5 +1,7 @@
 # Personal test data
 tests/data
+docs/
+.agents/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
