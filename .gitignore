@@ -1,7 +1,7 @@
 # Personal test data
 tests/data
 docs/
-.agents/
+.opencode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
