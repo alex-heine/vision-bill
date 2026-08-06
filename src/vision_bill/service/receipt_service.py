@@ -21,8 +21,8 @@ class ModelResult:
 
 
 class ReceiptService:
-    def __init__(self, settings: Settings):
-        self._provider: LLMProvider = get_llm_provider(settings.llm)
+    def __init__(self, settings: Settings, provider: LLMProvider):
+        self._provider: LLMProvider = provider
         self._image_service = ImageService(settings)
 
     async def get_available_models(self) -> list[ModelInfo]:

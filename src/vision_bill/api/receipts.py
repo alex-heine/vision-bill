@@ -28,7 +28,7 @@ async def analyze_image(model_id: str, receipt: UploadFile):
             detail=f"Unsupported image type: {e.detected_type}",
         )
 
-    receipt_service = ReceiptService(settings)
+    receipt_service = ReceiptService(settings, provider)
     models = await receipt_service.get_available_models()
 
     llm_response = await receipt_service.analyse_receipt_from_model(model_id, content)
