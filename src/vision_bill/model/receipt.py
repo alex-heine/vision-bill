@@ -2,7 +2,7 @@ from datetime import date as Date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class LineItem(BaseModel):
@@ -11,8 +11,14 @@ class LineItem(BaseModel):
     unit_price: Decimal = Field(ge=0, description="Price per unit")
     total_price: Decimal = Field(ge=0, description="quantity * unit_price, line total")
     category: Literal[
-        "grocery", "electronics", "clothing", "restaurant",
-        "fuel", "pharmacy", "entertainment", "other"
+        "grocery",
+        "electronics",
+        "clothing",
+        "restaurant",
+        "fuel",
+        "pharmacy",
+        "entertainment",
+        "other",
     ] = Field(default="other", description="Best-guess category of the item")
 
 
@@ -24,7 +30,9 @@ class TaxLine(BaseModel):
 
 class Receipt(BaseModel):
     merchant_name: str = Field(description="Name of the store or vendor")
-    merchant_address: str | None = Field(default=None, description="Store address if printed on receipt")
+    merchant_address: str | None = Field(
+        default=None, description="Store address if printed on receipt"
+    )
     receipt_number: str | None = Field(default=None, description="Transaction/receipt ID")
     date: Date = Field(description="Date of purchase, ISO format YYYY-MM-DD")
     time: str | None = Field(default=None, description="Time of purchase, HH:MM 24h format")
@@ -45,7 +53,7 @@ class Receipt(BaseModel):
 
     @field_validator("total")
     @classmethod
-    def sanity_check_total(cls, v: Decimal, info) -> Decimal:
+    def sanity_check_total(cls, v: Decimal, info: ValidationInfo) -> Decimal:
         # Optional cross-field consistency check — catches LLM arithmetic drift
         subtotal = info.data.get("subtotal")
         tax_total = info.data.get("tax_total", Decimal(0))

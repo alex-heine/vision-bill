@@ -1,23 +1,18 @@
-from os import path
-from pathlib import Path
 import logging
-from collections.abc import Mapping, Sequence
 import re
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
-
-from fastapi import UploadFile
 
 from ...helper.logging_config import setup_logging
 
 setup_logging()
 
-from ollama import ListResponse
-
 from ...model.receipt import Receipt
 from ...provider.llm.base import LLMProvider, ModelInfo
 
 try:
-    from ollama import AsyncClient
+    from ollama import AsyncClient, ListResponse
 except ImportError:
     raise ImportError(
         "The 'ollama' package is required for OllamaProvider. Please install it with 'uv add ollama'."

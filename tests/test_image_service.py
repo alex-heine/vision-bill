@@ -1,16 +1,16 @@
-import io
+from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import UploadFile
+
 from vision_bill.config import Settings
 from vision_bill.model.image import ImageInfo
-from vision_bill.service.image_service import ImageService, UnsupportedImageTypeError, magic_service
+from vision_bill.service.image_service import ImageService, UnsupportedImageTypeError
 
 
 @pytest.fixture
-def mock_magic_service():
+def mock_magic_service() -> Generator[MagicMock, None, None]:
     """Mock for the magic_service singleton."""
     with patch("vision_bill.service.image_service.magic_service") as mocked:
         # The service uses magic_service.magic.from_buffer
@@ -19,9 +19,9 @@ def mock_magic_service():
 
 
 @pytest.fixture
-def image_service(settings, mock_magic_service):
+def image_service(settings: Settings, mock_magic_service: MagicMock) -> ImageService:
     """Provides an ImageService instance."""
-    return ImageService(settings)
+    return ImageService(settings.images)
 
 
 @pytest.mark.parametrize(
@@ -32,7 +32,12 @@ def image_service(settings, mock_magic_service):
         (b"fake_webp_bytes", "image/webp"),
     ],
 )
-async def test_get_media_type_success(image_service, mock_magic_service, content, expected_type):
+async def test_get_media_type_success(
+    image_service: ImageService,
+    mock_magic_service: MagicMock,
+    content: bytes,
+    expected_type: str,
+) -> None:
     # Arrange
     mock_magic_service.magic.from_buffer.return_value = expected_type
 
@@ -45,7 +50,10 @@ async def test_get_media_type_success(image_service, mock_magic_service, content
 
 
 @pytest.mark.asyncio
-async def test_validate_and_inspect_success(image_service, mock_magic_service):
+async def test_validate_and_inspect_success(
+    image_service: ImageService,
+    mock_magic_service: MagicMock,
+) -> None:
     # Arrange
     content = b"fake_png_bytes"
     mock_magic_service.magic.from_buffer.return_value = "image/png"
@@ -61,7 +69,10 @@ async def test_validate_and_inspect_success(image_service, mock_magic_service):
 
 
 @pytest.mark.asyncio
-async def test_validate_and_inspect_failure(image_service, mock_magic_service):
+async def test_validate_and_inspect_failure(
+    image_service: ImageService,
+    mock_magic_service: MagicMock,
+) -> None:
     # Arrange
     content = b"fake_pdf_bytes"
     mock_magic_service.magic.from_buffer.return_value = "application/pdf"
@@ -73,10 +84,10 @@ async def test_validate_and_inspect_failure(image_service, mock_magic_service):
     assert "application/pdf" in str(exc_info.value)
 
 
-def test_store_tmp_image(image_service, settings):
+def test_store_tmp_image(image_service: ImageService, settings: Settings) -> None:
     # Arrange
     content = b"fake-image-content"
-    tmp_dir = Path(settings.api.tmp_dir)
+    tmp_dir = Path(settings.images.tmp_dir)
     assert tmp_dir.exists()
 
     # Act
@@ -87,3 +98,30 @@ def test_store_tmp_image(image_service, settings):
     assert saved_path.parent == tmp_dir
     assert saved_path.suffix == ".png"
     assert saved_path.exists()
+
+
+def test_store_perm_image_moves_file(image_service: ImageService, settings: Settings) -> None:
+    """store_perm_image moves the tmp file into the save dir under a stable name."""
+    content = b"fake-image-content"
+    tmp_path = image_service.store_tmp_image(content)
+    save_dir = Path(settings.images.save_dir)
+
+    result = image_service.store_perm_image(tmp_path, 42)
+
+    assert result is not None
+    assert result == save_dir / "receipt_42.png"
+    assert result.exists()
+    assert not tmp_path.exists()
+    assert result.read_bytes() == content
+
+
+def test_store_perm_image_missing_returns_none(
+    image_service: ImageService,
+    settings: Settings,
+) -> None:
+    """store_perm_image returns None when the tmp file no longer exists."""
+    missing = Path(settings.images.tmp_dir) / "does_not_exist.png"
+
+    result = image_service.store_perm_image(missing, 1)
+
+    assert result is None

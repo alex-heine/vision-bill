@@ -36,6 +36,7 @@ An abstraction layer for LLM interaction:
 ## Development Workflow
 - **Package Manager**: Uses `uv`. Use `uv` for installing dependencies and running commands.
 - **Run App**: `uvicorn src.vision_bill.main:app --host 0.0.0.0 --port 8080 --reload --reload-dir ./src/vision_bill`
+- **Database migrations**: Hand-written raw SQL in `alembic/versions/` (no autogenerate). Before starting the app run `uv run alembic upgrade head` (safe on existing DBs — migration 0001 uses `IF NOT EXISTS`). New migration: `uv run alembic revision -m "message"`, then edit `alembic/versions/<rev>_<message>.py` with explicit SQL. Docker Compose runs the upgrade automatically before uvicorn.
 - **Lint & Typecheck**: Run `ruff check .` and `mypy .` (ensure project root context).
 - **Testing**:
   - Unit tests: `pytest tests/`

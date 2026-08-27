@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+
 class ImageInfo(BaseModel):
     media_type: str = Field(description="The type of media (e.g., 'image/jpeg', 'image/png')")
     size_bytes: int = Field(gt=0, description="Size of the image in bytes")

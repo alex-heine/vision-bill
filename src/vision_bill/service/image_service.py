@@ -1,12 +1,14 @@
 import logging
-
+import shutil
+import uuid
 from pathlib import Path
-from ..config import Settings
+
+import magic
+
+from ..config import ImageSettings
 from ..model.image import ImageInfo
 
 logger = logging.getLogger(__name__)
-
-import magic
 
 
 ALLOWED_IMAGE_TYPES = {
@@ -30,7 +32,7 @@ class UnsupportedImageTypeError(Exception):
 class MagicService:
     """Wrapper for magic to only be loaded once"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.magic = magic.Magic(mime=True)
 
 
@@ -42,10 +44,12 @@ magic_service = MagicService()
 class ImageService:
     """Handles image inspection and validation."""
 
-    def __init__(self, settings: Settings, sniff_chunk_size: int = 4096):
+    def __init__(self, settings: ImageSettings, sniff_chunk_size: int = 4096):
         self._sniff_chunk_size = sniff_chunk_size
-        self._tmp_dir = Path(settings.api.tmp_dir)
+        self._tmp_dir = Path(settings.tmp_dir)
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
+        self._save_dir = Path(settings.save_dir)
+        self._save_dir.mkdir(parents=True, exist_ok=True)
 
     def get_media_type(self, content: bytes) -> str:
         """
@@ -78,8 +82,6 @@ class ImageService:
 
     def store_tmp_image(self, content: bytes) -> Path:
         """Writes content to a unique temporary file and returns the path."""
-        import uuid
-
         file_id = str(uuid.uuid4())
         # Use a consistent extension or derive it if needed; .png is safe for vision models
         tmp_path = self._tmp_dir / f"temp_{file_id}.png"
@@ -88,3 +90,21 @@ class ImageService:
             f.write(content)
 
         return tmp_path
+
+    def store_perm_image(self, tmp_path: Path, receipt_id: int) -> Path | None:
+        """Move a tmp image to the permanent save dir under a stable name.
+
+        Returns the destination path, or None if the tmp file no longer exists.
+        """
+        if not tmp_path.exists():
+            logger.warning("Tmp image %s does not exist - nothing to store", tmp_path)
+            return None
+
+        destination = self._save_dir / f"receipt_{receipt_id}{tmp_path.suffix}"
+        if destination.exists():
+            destination = (
+                self._save_dir / f"{uuid.uuid4().hex}_receipt_{receipt_id}{tmp_path.suffix}"
+            )
+
+        shutil.move(str(tmp_path), str(destination))
+        return destination
