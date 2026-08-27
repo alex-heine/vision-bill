@@ -27,6 +27,7 @@ depends_on: Union[str, Sequence[str], None] = None
 CREATE_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS receipts (
     id              SERIAL PRIMARY KEY,
+    confidence      SMALLINT        NOT NULL DEFAULT 0,
     merchant_name   VARCHAR(255)    NOT NULL,
     merchant_address TEXT,
     receipt_number  VARCHAR(100),
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     payment_method  VARCHAR(50)     NOT NULL DEFAULT 'unknown',
     status          VARCHAR(20)     NOT NULL DEFAULT 'unverified'
                     CHECK (status IN ('unverified', 'verified')),
+    verified        BOOLEAN         NOT NULL DEFAULT FALSE,
     image_path      TEXT,
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

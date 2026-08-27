@@ -49,6 +49,7 @@ def _make_provider() -> MagicMock:
 def _receipt_row(**overrides: object) -> dict[str, object]:
     row: dict[str, object] = {
         "id": 7,
+        "confidence": 95,
         "merchant_name": "Bauhaus",
         "merchant_address": "Musterstr. 1",
         "receipt_number": "B-1",
@@ -64,6 +65,7 @@ def _receipt_row(**overrides: object) -> dict[str, object]:
         "status": "unverified",
         "image_path": None,
         "created_at": datetime(2024, 1, 15, 14, 30, tzinfo=UTC),
+        "verified": False,
     }
     row.update(overrides)
     return row
@@ -71,6 +73,7 @@ def _receipt_row(**overrides: object) -> dict[str, object]:
 
 def _make_receipt() -> Receipt:
     return Receipt(
+        confidence=95,
         merchant_name="Bauhaus",
         merchant_address="Musterstr. 1",
         receipt_number="B-1",
@@ -158,6 +161,7 @@ def test_analyze_image_persists_and_returns_receipt_id(
     body = response.json()
     assert body["receipt_id"] == 7
     assert body["status"] == "unverified"
+    assert body["verified"] is False
     assert body["filename"] == "bauhaus.jpeg"
     assert body["media_type"] == "image/jpeg"
     assert body["size_bytes"] > 0
@@ -239,7 +243,11 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
             _receipt_row(image_path=tmp_path),
-            _receipt_row(status="verified", image_path=f"{settings.images.save_dir}/receipt_7.png"),
+            _receipt_row(
+                status="verified",
+                verified=True,
+                image_path=f"{settings.images.save_dir}/receipt_7.png",
+            ),
         ]
     )
     response = ctx.client.post(f"{RECEIPTS_URL}/{receipt_id}/verify")
@@ -247,6 +255,7 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "verified"
+    assert body["verified"] is True
     assert body["image_path"] == f"{settings.images.save_dir}/receipt_7.png"
 
     # The image was moved: tmp dir empty, save dir has the file

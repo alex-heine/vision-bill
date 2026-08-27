@@ -4,7 +4,7 @@ import requests
 
 url = "http://localhost:8080/api/v1/receipts/analyze-image"
 #file_path = "./data/bauhaus.jpeg"
-file_path = "./data/very-long-hit.png"
+file_path = "./data/bauhaus.jpeg"
 
 params = {"model_id": "gemma4:e4b"}
 

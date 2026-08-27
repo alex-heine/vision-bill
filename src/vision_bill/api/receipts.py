@@ -49,9 +49,11 @@ async def analyze_image(
         "media_type": info.media_type,
         "size_bytes": info.size_bytes,
         "models": models,
+        "prompt": Receipt.model_json_schema(),
         "llm_response": llm_response,
         "receipt_id": row.id,
         "status": row.status,
+        "verified": row.verified,
     }
 
 

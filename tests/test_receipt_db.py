@@ -42,6 +42,7 @@ def _receipt_row(
     """A realistic asyncpg receipts row (driver types, not strings)."""
     row: dict[str, Any] = {
         "id": receipt_id,
+        "confidence": 95,
         "merchant_name": "Test Store",
         "merchant_address": "123 Main St",
         "receipt_number": "R-001",
@@ -57,6 +58,7 @@ def _receipt_row(
         "status": "unverified",
         "image_path": None,
         "created_at": datetime(2024, 1, 15, 14, 30, tzinfo=UTC),
+        "verified": False,
     }
     row.update(overrides)
     return row
@@ -86,6 +88,7 @@ def _tax_row(receipt_id: int = 1) -> dict[str, Any]:
 
 def _make_receipt(merchant_name: str = "Test Store") -> Receipt:
     return Receipt(
+        confidence=95,
         merchant_name=merchant_name,
         merchant_address="123 Main St",
         receipt_number="R-001",
@@ -210,8 +213,10 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     result = await db.persist_receipt(receipt, image_path="x", status="unverified")
 
     assert result.id == 1
+    assert result.confidence == 95
     assert result.merchant_name == "Test Store"
     assert result.status == "unverified"
+    assert result.verified is False
     assert result.image_path == "x"
     assert result.time == "14:30:00"
     assert result.created_at == Date(2024, 1, 15)
@@ -219,12 +224,14 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     # The TIME column must be bound as datetime.time, never a string
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
-    bound_time = fetchrow_call.args[5]
+    # confidence is the first bound parameter
+    assert fetchrow_call.args[1] == 95
+    bound_time = fetchrow_call.args[6]
     assert isinstance(bound_time, Time)
     assert bound_time == Time(14, 30)
     # status and image_path are the last two bound parameters
-    assert fetchrow_call.args[13] == "unverified"
-    assert fetchrow_call.args[14] == "x"
+    assert fetchrow_call.args[14] == "unverified"
+    assert fetchrow_call.args[15] == "x"
 
     assert mock_conn.fetchrow.call_count == 1
     # One execute each for the line item and the tax
@@ -360,18 +367,22 @@ async def test_verify_receipt(db: ReceiptDB) -> None:
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(receipt_id=1, status="verified", image_path="/save/receipt_1.png")
+        return_value=_receipt_row(
+            receipt_id=1, status="verified", verified=True, image_path="/save/receipt_1.png"
+        )
     )
 
     result = await db.verify_receipt(1, "/save/receipt_1.png")
 
     assert result is not None
     assert result.status == "verified"
+    assert result.verified is True
     assert result.image_path == "/save/receipt_1.png"
 
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
     assert "status = 'verified'" in fetchrow_call.args[0]
+    assert "verified = TRUE" in fetchrow_call.args[0]
     assert "RETURNING *" in fetchrow_call.args[0]
     assert fetchrow_call.args[1] == 1
     assert fetchrow_call.args[2] == "/save/receipt_1.png"
