@@ -8,6 +8,7 @@ class ReceiptRow(BaseModel):
     """Represents a single row in the `receipts` table."""
 
     id: int
+    confidence: int
     merchant_name: str
     merchant_address: str | None = None
     receipt_number: str | None = None
@@ -23,6 +24,7 @@ class ReceiptRow(BaseModel):
     created_at: Date | None = None
     status: str = "unverified"
     image_path: str | None = None
+    verified: bool = False
 
 
 class LineItemRow(BaseModel):

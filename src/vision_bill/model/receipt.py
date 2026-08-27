@@ -29,6 +29,11 @@ class TaxLine(BaseModel):
 
 
 class Receipt(BaseModel):
+    confidence: int = Field(
+        ge=0,
+        le=100,
+        description="from 0 - 100 as percentage, how sure are you in the presented data",
+    )
     merchant_name: str = Field(description="Name of the store or vendor")
     merchant_address: str | None = Field(
         default=None, description="Store address if printed on receipt"

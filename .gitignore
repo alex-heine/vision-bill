@@ -1,4 +1,6 @@
 # Personal test data
+uploads/
+uploads_tmp/
 tests/data
 docs/
 .opencode/

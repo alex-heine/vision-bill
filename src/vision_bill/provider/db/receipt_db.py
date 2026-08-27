@@ -18,29 +18,30 @@ from ...model.receipt import Receipt
 
 INSERT_RECEIPT_SQL = """
     INSERT INTO receipts
-        (merchant_name, merchant_address, receipt_number, date, time,
+        (confidence, merchant_name, merchant_address, receipt_number, date, time,
          currency, subtotal, discount_total, tax_total, tip, total,
          payment_method, status, image_path)
     VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING *
 """
 
 UPDATE_RECEIPT_SQL = """
     UPDATE receipts SET
-        merchant_name   = $1,
-        merchant_address = $2,
-        receipt_number  = $3,
-        date            = $4,
-        time            = $5,
-        currency        = $6,
-        subtotal        = $7,
-        discount_total  = $8,
-        tax_total       = $9,
-        tip             = $10,
-        total           = $11,
-        payment_method  = $12
-    WHERE id = $13
+        confidence      = $1,
+        merchant_name   = $2,
+        merchant_address = $3,
+        receipt_number  = $4,
+        date            = $5,
+        time            = $6,
+        currency        = $7,
+        subtotal        = $8,
+        discount_total  = $9,
+        tax_total       = $10,
+        tip             = $11,
+        total           = $12,
+        payment_method  = $13
+    WHERE id = $14
     RETURNING *
 """
 
@@ -64,9 +65,7 @@ GET_RECEIPT_SQL = "SELECT * FROM receipts WHERE id = $1"
 LIST_RECEIPTS_SQL = "SELECT * FROM receipts ORDER BY date DESC LIMIT $1 OFFSET $2"
 LIST_LINE_ITEMS_SQL = "SELECT * FROM line_items WHERE receipt_id = $1 ORDER BY id"
 LIST_TAXES_SQL = "SELECT * FROM taxes WHERE receipt_id = $1 ORDER BY id"
-VERIFY_RECEIPT_SQL = (
-    "UPDATE receipts SET status = 'verified', image_path = $2 WHERE id = $1 RETURNING *"
-)
+VERIFY_RECEIPT_SQL = "UPDATE receipts SET status = 'verified', verified = TRUE, image_path = $2 WHERE id = $1 RETURNING *"
 
 
 logger = logging.getLogger(__name__)
@@ -201,6 +200,7 @@ class ReceiptDB:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 INSERT_RECEIPT_SQL,
+                receipt.confidence,
                 receipt.merchant_name,
                 receipt.merchant_address,
                 receipt.receipt_number,
@@ -231,6 +231,7 @@ class ReceiptDB:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 UPDATE_RECEIPT_SQL,
+                receipt.confidence,
                 receipt.merchant_name,
                 receipt.merchant_address,
                 receipt.receipt_number,

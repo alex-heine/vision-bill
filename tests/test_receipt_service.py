@@ -66,6 +66,7 @@ async def test_analyse_receipt_from_model_success(
     # Arrange
     service, mock_provider, _, mock_path = receipt_service_context
     mock_receipt = Receipt(
+        confidence=95,
         merchant_name=merchant_name,
         date=Date(2023, 1, 1),
         currency="USD",
@@ -119,6 +120,7 @@ async def test_extract_receipt_all_models_success(
     mock_provider.get_available_models.return_value = [model1, model2]
 
     receipt1 = Receipt(
+        confidence=95,
         merchant_name="Merchant 1",
         date=Date(2023, 1, 1),
         currency="USD",
@@ -127,6 +129,7 @@ async def test_extract_receipt_all_models_success(
         total=Decimal("10.00"),
     )
     receipt2 = Receipt(
+        confidence=95,
         merchant_name="Merchant 2",
         date=Date(2023, 1, 1),
         currency="USD",
@@ -175,6 +178,7 @@ async def test_extract_receipt_all_models_value_error(
     mock_provider.get_available_models.return_value = [model1, model2]
 
     receipt2 = Receipt(
+        confidence=95,
         merchant_name="Merchant 2",
         date=Date(2023, 1, 1),
         currency="USD",
@@ -222,6 +226,7 @@ async def test_extract_receipt_all_models_exception(
     mock_provider.get_available_models.return_value = [model1, model2]
 
     receipt2 = Receipt(
+        confidence=95,
         merchant_name="Merchant 2",
         date=Date(2023, 1, 1),
         currency="USD",
@@ -263,6 +268,7 @@ async def test_extract_receipt_all_models_exception(
 
 def _make_receipt() -> Receipt:
     return Receipt(
+        confidence=95,
         merchant_name="Test Store",
         merchant_address="123 Main St",
         receipt_number="R-001",
@@ -289,6 +295,7 @@ def _make_receipt() -> Receipt:
 def _make_row(**overrides: object) -> ReceiptRow:
     base: dict[str, Any] = {
         "id": 1,
+        "confidence": 95,
         "merchant_name": "Test Store",
         "merchant_address": "123 Main St",
         "receipt_number": "R-001",
@@ -304,6 +311,7 @@ def _make_row(**overrides: object) -> ReceiptRow:
         "created_at": Date(2024, 1, 15),
         "status": "unverified",
         "image_path": None,
+        "verified": False,
     }
     base.update(overrides)
     return ReceiptRow(**base)
