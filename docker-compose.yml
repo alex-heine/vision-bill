@@ -1,7 +1,6 @@
 services:
   vision_bill:
     build: .
-    container_name: vision_bill
     restart: always
     env_file:
       - .env
@@ -21,13 +20,10 @@ services:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
       - ./uploads_tmp:/app/uploads_tmp
-    command: >
-      uv run alembic upgrade head &&
-      uv run uvicorn src.vision_bill.main:app
-      --host 0.0.0.0
-      --port 8080
-      --reload
-      --reload-dir /app/src/vision_bill
+    command:
+      - sh
+      - -c
+      - uv run alembic upgrade head && uv run uvicorn src.vision_bill.main:app --host 0.0.0.0 --port 8080 --reload --reload-dir /app/src/vision_bill
 
   db:
     image: postgres:18
@@ -41,7 +37,7 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql
 
 volumes:
   db_data:
