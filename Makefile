@@ -25,7 +25,7 @@ docker-build: ## Build the Docker image
 	docker build -t vision-bill .
 
 docker-up: ## Build image + start app and postgres
-	docker compose up -d
+	docker compose up -d --build
 
 docker-down: ## Stop app and postgres
 	docker compose down
