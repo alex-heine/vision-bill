@@ -4,6 +4,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from ...helper.logging_config import setup_logging
 
 setup_logging()
@@ -12,7 +14,7 @@ from ...model.receipt import Receipt
 from ...provider.llm.base import LLMProvider, ModelInfo
 
 try:
-    from ollama import AsyncClient, ListResponse
+    from ollama import AsyncClient, ListResponse, ResponseError
 except ImportError:
     raise ImportError(
         "The 'ollama' package is required for OllamaProvider. Please install it with 'uv add ollama'."
@@ -30,6 +32,17 @@ RETRY_LIMIT = 3
 class OllamaProvider(LLMProvider):
     def __init__(self, host: str):
         self._client = AsyncClient(host=host)
+
+    async def check_connection(self) -> bool:
+        try:
+            await self._client.list()
+            return True
+        except (ConnectionError, ResponseError, httpx.HTTPError) as e:
+            # The SDK raises ConnectionError when Ollama is unreachable,
+            # ResponseError on HTTP error responses, and raw httpx errors
+            # (e.g. timeouts) otherwise.
+            logger.warning("Ollama connection check failed: %s", e)
+            return False
 
     async def get_available_models(self) -> list[ModelInfo]:
         models: ListResponse = await self._client.list()

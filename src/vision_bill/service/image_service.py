@@ -108,3 +108,18 @@ class ImageService:
 
         shutil.move(str(tmp_path), str(destination))
         return destination
+
+    def delete_image(self, image_path: Path | None) -> bool:
+        """Remove an image file from disk.
+
+        Best-effort: returns True if a file was deleted, False if the path was
+        missing or falsy. Never raises for a missing file.
+        """
+        if not image_path:
+            return False
+        if not image_path.exists():
+            logger.warning("Image file %s does not exist - nothing to delete", image_path)
+            return False
+        image_path.unlink()
+        logger.info("Deleted image file %s", image_path)
+        return True

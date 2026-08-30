@@ -153,3 +153,33 @@ async def test_analyse_receipt_from_model_repair(mock_client):
     messages = last_call["messages"]
     # The last message should be the user's repair instruction
     assert any("Please respond again with ONLY corrected JSON" in m["content"] for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_check_connection_success(mock_client):
+    mock_client.list.return_value = MagicMock(models=[])
+
+    provider = OllamaProvider(host="http://localhost:11434")
+    assert await provider.check_connection() is True
+    mock_client.list.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_check_connection_failure(mock_client):
+    mock_client.list.side_effect = ConnectionError("connection refused")
+
+    provider = OllamaProvider(host="http://localhost:11434")
+    assert await provider.check_connection() is False
+    mock_client.list.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_check_connection_unexpected_error_propagates(mock_client):
+    # Only known failure modes (ConnectionError, ResponseError, httpx errors)
+    # map to "unreachable"; anything else is a bug and must surface.
+    mock_client.list.side_effect = RuntimeError("boom")
+
+    provider = OllamaProvider(host="http://localhost:11434")
+    with pytest.raises(RuntimeError, match="boom"):
+        await provider.check_connection()
+    mock_client.list.assert_awaited_once()

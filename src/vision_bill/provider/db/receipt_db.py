@@ -1,7 +1,9 @@
 import logging
+from collections.abc import Mapping
 from datetime import date as Date
 from datetime import time as Time
 from decimal import Decimal
+from typing import Any
 
 import asyncpg
 
@@ -20,7 +22,7 @@ INSERT_RECEIPT_SQL = """
     INSERT INTO receipts
         (confidence, merchant_name, merchant_address, receipt_number, date, time,
          currency, subtotal, discount_total, tax_total, tip, total,
-         payment_method, status, image_path)
+         payment_method, status, image_id)
     VALUES
         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING *
@@ -62,10 +64,20 @@ INSERT_TAX_SQL = """
 """
 
 GET_RECEIPT_SQL = "SELECT * FROM receipts WHERE id = $1"
+# Join the images table so the detail response can expose the resolved
+# image_path without a second round-trip.
+GET_RECEIPT_WITH_IMAGE_SQL = """
+    SELECT r.*, i.image_path
+    FROM receipts r
+    LEFT JOIN images i ON i.id = r.image_id
+    WHERE r.id = $1
+"""
 LIST_RECEIPTS_SQL = "SELECT * FROM receipts ORDER BY date DESC LIMIT $1 OFFSET $2"
 LIST_LINE_ITEMS_SQL = "SELECT * FROM line_items WHERE receipt_id = $1 ORDER BY id"
 LIST_TAXES_SQL = "SELECT * FROM taxes WHERE receipt_id = $1 ORDER BY id"
-VERIFY_RECEIPT_SQL = "UPDATE receipts SET status = 'verified', verified = TRUE, image_path = $2 WHERE id = $1 RETURNING *"
+VERIFY_RECEIPT_SQL = (
+    "UPDATE receipts SET status = 'verified', verified = TRUE WHERE id = $1 RETURNING *"
+)
 
 
 logger = logging.getLogger(__name__)
@@ -123,9 +135,14 @@ class ReceiptDB:
         return Time.fromisoformat(receipt.time) if receipt.time else None
 
     @staticmethod
-    def _receipt_row_from_record(row: asyncpg.Record) -> ReceiptRow:
-        """Map a raw receipts row to a ReceiptRow with explicit conversions."""
+    def _receipt_row_from_record(row: Mapping[str, Any]) -> ReceiptRow:
+        """Map a raw receipts row to a ReceiptRow with explicit conversions.
+
+        Accepts either an asyncpg.Record or a plain dict. Extra keys (e.g. the
+        joined ``image_path`` from the detail query) are dropped.
+        """
         d = dict(row)
+        d.pop("image_path", None)
         t: Time | None = d["time"]
         d["time"] = t.isoformat() if t is not None else None
         created_at: Date | None = d["created_at"].date() if d["created_at"] is not None else None
@@ -187,10 +204,14 @@ class ReceiptDB:
     async def persist_receipt(
         self,
         receipt: Receipt,
-        image_path: str | None = None,
+        image_id: int | None = None,
         status: str = "unverified",
     ) -> ReceiptRow:
-        """Insert a receipt (with line items and taxes) into PostgreSQL."""
+        """Insert a receipt (with line items and taxes) into PostgreSQL.
+
+        ``image_id`` links the receipt to an ``images`` row (the FK swap); it
+        is ``None`` for receipts created without an associated image.
+        """
         logger.info(
             "Persisting receipt for '%s' on %s",
             receipt.merchant_name,
@@ -214,7 +235,7 @@ class ReceiptDB:
                 float(receipt.total),
                 receipt.payment_method,
                 status,
-                image_path,
+                image_id,
             )
             receipt_id: int = row["id"]
             await self._insert_children(conn, receipt_id, receipt)
@@ -255,15 +276,18 @@ class ReceiptDB:
 
         return self._receipt_row_from_record(row)
 
-    async def verify_receipt(self, receipt_id: int, image_path: str | None) -> ReceiptRow | None:
-        """Mark a receipt as verified and store the permanent image path.
+    async def verify_receipt(self, receipt_id: int) -> ReceiptRow | None:
+        """Mark a receipt as verified.
 
-        Returns None when no receipt with the given id exists.
+        The image path no longer lives on the receipt row — it is moved to the
+        permanent location on the ``images`` row by the caller (see
+        ``ImageDB.update_image_path``). Returns None when no receipt with the
+        given id exists.
         """
         logger.info("Verifying receipt %d", receipt_id)
 
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(VERIFY_RECEIPT_SQL, receipt_id, image_path)
+            row = await conn.fetchrow(VERIFY_RECEIPT_SQL, receipt_id)
         if row is None:
             return None
         return self._receipt_row_from_record(row)
@@ -289,17 +313,26 @@ class ReceiptDB:
         return [self._receipt_row_from_record(row) for row in rows]
 
     async def get_receipt_with_details(self, receipt_id: int) -> ReceiptWithDetails | None:
-        """Fetch a receipt together with its line items and taxes."""
-        receipt = await self.get_receipt_by_id(receipt_id)
-        if receipt is None:
-            return None
+        """Fetch a receipt together with its line items, taxes and image path.
 
+        The image path is resolved via a LEFT JOIN on the images table so the
+        response exposes it for frontends even though the receipts row only
+        stores the FK.
+        """
         async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(GET_RECEIPT_WITH_IMAGE_SQL, receipt_id)
+            if row is None:
+                return None
             li_rows = await conn.fetch(LIST_LINE_ITEMS_SQL, receipt_id)
             tax_rows = await conn.fetch(LIST_TAXES_SQL, receipt_id)
+
+        d = dict(row)
+        image_path: str | None = d.get("image_path")
+        receipt = self._receipt_row_from_record(row)
 
         return ReceiptWithDetails(
             receipt=receipt,
             line_items=[self._line_item_row_from_record(r) for r in li_rows],
             taxes=[self._tax_row_from_record(r) for r in tax_rows],
+            image_path=image_path,
         )

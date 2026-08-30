@@ -35,6 +35,10 @@ class LLMProvider(ABC):
     async def send_message(self, model_id: str, messages: Sequence[Mapping[str, Any]]) -> str:
         """Send a message to the given model and return the response."""
 
+    @abstractmethod
+    async def check_connection(self) -> bool:
+        """Return True if the backend is reachable, False otherwise."""
+
     def build_prompt(self) -> str:
         """Build a prompt for the LLM to analyze an image."""
         return f"""You are an receipt analyser. You will be given an image of a receipt.

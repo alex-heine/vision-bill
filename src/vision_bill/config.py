@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, PostgresDsn, computed_field
+from pydantic import BaseModel, Field, PostgresDsn, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,12 @@ class ApiSettings(BaseModel):
 class ImageSettings(BaseModel):
     save_dir: str = "/app/uploads/"
     tmp_dir: str = "/app/uploads_tmp/"
+
+
+class WorkerSettings(BaseModel):
+    """Background analysis worker tuning."""
+
+    check_interval_seconds: int = Field(default=300, ge=1)
 
 
 class PGSettings(BaseModel):
@@ -65,6 +71,7 @@ class Settings(BaseSettings):
     images: ImageSettings = ImageSettings()
     llm: LLMSettings
     pg: PGSettings
+    worker: WorkerSettings = WorkerSettings()
 
 
 # Required fields (llm, pg) are populated from .env / environment variables
