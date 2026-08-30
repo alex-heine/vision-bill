@@ -11,6 +11,7 @@ from .api.system.main import router as system_router
 from .config import settings
 from .helper.logging_config import setup_logging
 from .provider.factory import get_llm_provider
+from .service.analysis_scheduler import AnalysisScheduler
 from .service.image_service import ImageService
 from .service.receipt_service import ReceiptService
 
@@ -30,10 +31,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.exception("Failed to initialise database - continuing without it")
 
+    image_service = ImageService(settings.images)
+    scheduler = AnalysisScheduler(
+        settings=settings,
+        provider=provider,
+        receipt_service=receipt_service,
+        image_db=receipt_service.image_db,
+    )
+
     app.state.receipt_service = receipt_service
-    app.state.image_service = ImageService(settings.images)
+    app.state.image_service = image_service
+    app.state.analysis_scheduler = scheduler
+
+    await scheduler.start()
 
     yield
+
+    await scheduler.stop()
 
     try:
         await app.state.receipt_service.destroy_db()

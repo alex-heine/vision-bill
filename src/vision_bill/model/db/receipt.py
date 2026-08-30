@@ -23,7 +23,7 @@ class ReceiptRow(BaseModel):
     payment_method: str = "unknown"
     created_at: Date | None = None
     status: str = "unverified"
-    image_path: str | None = None
+    image_id: int | None = None
     verified: bool = False
 
 
@@ -50,8 +50,13 @@ class TaxLineRow(BaseModel):
 
 
 class ReceiptWithDetails(BaseModel):
-    """A receipt row enriched with its line items and taxes."""
+    """A receipt row enriched with its line items and taxes.
+
+    ``image_path`` is resolved from the joined ``images`` row so frontends
+    can keep displaying the image location without a second lookup.
+    """
 
     receipt: ReceiptRow
     line_items: list[LineItemRow]
     taxes: list[TaxLineRow]
+    image_path: str | None = None

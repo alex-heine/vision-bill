@@ -7,8 +7,10 @@ import asyncpg
 from fastapi import UploadFile
 
 from ..config import ImageSettings, PGSettings
+from ..model.db.image import ImageRow
 from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
+from ..provider.db.image_db import ImageDB
 from ..provider.db.receipt_db import ReceiptDB
 from ..provider.llm.base import LLMProvider, ModelInfo
 from .image_service import ImageService
@@ -35,14 +37,17 @@ class ReceiptService:
         self._provider: LLMProvider = provider
         self._image_service = ImageService(image_settings)
         self._db = ReceiptDB(pg_settings)
+        self._image_db = ImageDB(pg_settings)
 
     # ── Database delegation ──────────────────────────────────────────
 
     async def init_db(self) -> None:
         await self._db.init_db()
+        await self._image_db.init_db()
 
     async def destroy_db(self) -> None:
         await self._db.destroy_db()
+        await self._image_db.destroy_db()
 
     @property
     def pool(self) -> asyncpg.Pool:
@@ -52,13 +57,18 @@ class ReceiptService:
     def db_ready(self) -> bool:
         return self._db.is_ready
 
+    @property
+    def image_db(self) -> ImageDB:
+        """The images-table provider, exposed for the scheduler and API."""
+        return self._image_db
+
     async def persist_receipt(
         self,
         receipt: Receipt,
-        image_path: str | None = None,
+        image_id: int | None = None,
         status: str = "unverified",
     ) -> ReceiptRow:
-        return await self._db.persist_receipt(receipt, image_path=image_path, status=status)
+        return await self._db.persist_receipt(receipt, image_id=image_id, status=status)
 
     async def get_receipt_by_id(self, receipt_id: int) -> ReceiptRow | None:
         return await self._db.get_receipt_by_id(receipt_id)
@@ -76,14 +86,54 @@ class ReceiptService:
     async def update_receipt(self, receipt_id: int, receipt: Receipt) -> ReceiptRow | None:
         return await self._db.update_receipt(receipt_id, receipt)
 
-    async def verify_receipt(self, receipt_id: int, image_path: str | None) -> ReceiptRow | None:
-        return await self._db.verify_receipt(receipt_id, image_path)
+    async def verify_receipt(self, receipt_id: int) -> ReceiptRow | None:
+        return await self._db.verify_receipt(receipt_id)
+
+    # ── Image (images table) delegation ──────────────────────────────
+
+    async def store_image(
+        self,
+        image_path: str,
+        original_filename: str | None = None,
+        media_type: str | None = None,
+        size_bytes: int | None = None,
+        status: str = "pending",
+    ) -> ImageRow:
+        return await self._image_db.store_image(
+            image_path=image_path,
+            original_filename=original_filename,
+            media_type=media_type,
+            size_bytes=size_bytes,
+            status=status,
+        )
+
+    async def get_image_by_id(self, image_id: int) -> ImageRow | None:
+        return await self._image_db.get_image_by_id(image_id)
+
+    async def list_pending_images(self) -> list[ImageRow]:
+        return await self._image_db.list_pending_images()
+
+    async def mark_image_analyzed(self, image_id: int, receipt_id: int) -> None:
+        await self._image_db.mark_analyzed(image_id, receipt_id)
+
+    async def mark_image_failed(self, image_id: int, error: str) -> None:
+        await self._image_db.mark_failed(image_id, error)
+
+    async def update_image_path(self, image_id: int, image_path: str) -> None:
+        await self._image_db.update_image_path(image_id, image_path)
+
+    async def delete_image_row(self, image_id: int) -> None:
+        await self._image_db.delete_image(image_id)
 
     # ── Extraction methods ───────────────────────────────────────────
 
     async def get_available_models(self) -> list[ModelInfo]:
         logger.debug("Requesting available models from provider")
         return await self._provider.get_available_models()
+
+    async def check_connection(self) -> bool:
+        """Return True if the LLM backend is reachable, False otherwise."""
+        return await self._provider.check_connection()
 
     async def analyse_receipt_from_path(self, model_id: str, image_path: Path) -> Receipt:
         """Run LLM extraction on an image file whose lifetime the caller owns."""

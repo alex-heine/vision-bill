@@ -56,7 +56,7 @@ def _receipt_row(
         "total": Decimal("54.50"),
         "payment_method": "credit_card",
         "status": "unverified",
-        "image_path": None,
+        "image_id": None,
         "created_at": datetime(2024, 1, 15, 14, 30, tzinfo=UTC),
         "verified": False,
     }
@@ -205,19 +205,19 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     """persist_receipt should insert receipt + line items + taxes."""
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_path="x"))
+    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_id=3))
     mock_conn.execute = AsyncMock()
 
     receipt = _make_receipt()
 
-    result = await db.persist_receipt(receipt, image_path="x", status="unverified")
+    result = await db.persist_receipt(receipt, image_id=3, status="unverified")
 
     assert result.id == 1
     assert result.confidence == 95
     assert result.merchant_name == "Test Store"
     assert result.status == "unverified"
     assert result.verified is False
-    assert result.image_path == "x"
+    assert result.image_id == 3
     assert result.time == "14:30:00"
     assert result.created_at == Date(2024, 1, 15)
 
@@ -229,9 +229,9 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     bound_time = fetchrow_call.args[6]
     assert isinstance(bound_time, Time)
     assert bound_time == Time(14, 30)
-    # status and image_path are the last two bound parameters
+    # status and image_id are the last two bound parameters
     assert fetchrow_call.args[14] == "unverified"
-    assert fetchrow_call.args[15] == "x"
+    assert fetchrow_call.args[15] == 3
 
     assert mock_conn.fetchrow.call_count == 1
     # One execute each for the line item and the tax
@@ -288,10 +288,16 @@ async def test_list_receipts(db: ReceiptDB) -> None:
 
 @pytest.mark.asyncio
 async def test_get_receipt_with_details(db: ReceiptDB) -> None:
-    """get_receipt_with_details should combine row, line items and taxes."""
+    """get_receipt_with_details should combine row, line items, taxes and image path.
+
+    fetchrow serves the LEFT JOIN query, so the row carries the receipt columns
+    plus an extra ``image_path`` key (the mapper drops it, the detail keeps it).
+    """
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(receipt_id=5))
+    mock_conn.fetchrow = AsyncMock(
+        return_value=_receipt_row(receipt_id=5, image_id=9, image_path="/save/img.png")
+    )
 
     def fetch_side_effect(sql: str, *args: object) -> list[dict[str, Any]]:
         if "line_items" in sql:
@@ -306,6 +312,8 @@ async def test_get_receipt_with_details(db: ReceiptDB) -> None:
 
     assert details is not None
     assert details.receipt.id == 5
+    assert details.receipt.image_id == 9
+    assert details.image_path == "/save/img.png"
     assert len(details.line_items) == 1
     assert details.line_items[0].description == "Item A"
     assert details.line_items[0].quantity == 2.0
@@ -367,17 +375,15 @@ async def test_verify_receipt(db: ReceiptDB) -> None:
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(
-            receipt_id=1, status="verified", verified=True, image_path="/save/receipt_1.png"
-        )
+        return_value=_receipt_row(receipt_id=1, status="verified", verified=True, image_id=9)
     )
 
-    result = await db.verify_receipt(1, "/save/receipt_1.png")
+    result = await db.verify_receipt(1)
 
     assert result is not None
     assert result.status == "verified"
     assert result.verified is True
-    assert result.image_path == "/save/receipt_1.png"
+    assert result.image_id == 9
 
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
@@ -385,7 +391,6 @@ async def test_verify_receipt(db: ReceiptDB) -> None:
     assert "verified = TRUE" in fetchrow_call.args[0]
     assert "RETURNING *" in fetchrow_call.args[0]
     assert fetchrow_call.args[1] == 1
-    assert fetchrow_call.args[2] == "/save/receipt_1.png"
 
 
 @pytest.mark.asyncio
@@ -395,6 +400,6 @@ async def test_verify_receipt_not_found(db: ReceiptDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await db.verify_receipt(999, None)
+    result = await db.verify_receipt(999)
 
     assert result is None
