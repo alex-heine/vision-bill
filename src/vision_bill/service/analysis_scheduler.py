@@ -26,7 +26,7 @@ class AnalysisScheduler:
     """Drains the pending-image queue by running LLM extraction on each image.
 
     Runs as a background task started from the app lifespan and can also be
-    triggered on demand via the ``POST /analyze-pending`` endpoint. Both paths
+    triggered on demand via the ``POST /images/analyze`` endpoint. Both paths
     funnel through :meth:`process_pending`, which is guarded by an
     ``asyncio.Lock`` so a manual trigger and the periodic cycle never overlap.
 

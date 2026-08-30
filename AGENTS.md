@@ -32,14 +32,18 @@ All application code lives under `src/vision_bill/`. Entry point: `main.py`.
 
 ### 1. API Layer (`api/`)
 FastAPI routers, all mounted under versioned prefixes in `main.py`:
+- `api/images.py` — mounted at `/api/v1/images`:
+    - `POST /?model_id=...` — multipart upload; returns `201` with a `Location` header when analyzed, `202` with a `Location` header when queued, `415` for unsupported image types.
+    - `GET /` — lists images, optionally filtered with `?status=pending,failed`.
+    - `GET /{id}`, `DELETE /{id}` — inspect or delete pending/failed image resources.
+    - `POST /analyze` — manually trigger one pending-image analysis cycle.
 - `api/receipts.py` — mounted at `/api/v1/receipts`:
-    - `POST /analyze-image?model_id=...` — multipart upload; validates image type, runs LLM extraction, persists receipt with `status="unverified"`; returns LLM response + `receipt_id`.
-    - `GET /list`, `GET /{id}`, `PUT /{id}` — CRUD over persisted receipts.
+    - `GET /`, `GET /{id}`, `PUT /{id}` — list, inspect, and update persisted receipts.
     - `POST /{id}/verify` — marks a receipt verified and moves its image from tmp to permanent storage.
     - All endpoints return `503` when the DB pool is unavailable.
 - `api/system/llm.py` — mounted at `/api/v1/llm`: `GET /models` lists vision-capable models.
 - `api/system/main.py` — mounted at `/api/v1/system` (mostly stubbed).
-- `api/helper/helper.py` — FastAPI dependencies (`get_receipt_service`, `get_image_service`) backed by `app.state`.
+- `api/helper/helper.py` — FastAPI dependencies (`get_receipt_service`, `get_image_service`, `get_analysis_scheduler`) backed by `app.state`.
 
 ### 2. Service Layer (`service/`)
 Core business logic:
