@@ -24,6 +24,13 @@ LIST_PENDING_IMAGES_SQL = (
     "SELECT * FROM images WHERE status IN ('pending', 'failed') ORDER BY created_at ASC, id ASC"
 )
 
+LIST_IMAGES_SQL = "SELECT * FROM images ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2"
+
+LIST_IMAGES_BY_STATUS_SQL = (
+    "SELECT * FROM images WHERE status = ANY($1) ORDER BY created_at DESC, id DESC "
+    "LIMIT $2 OFFSET $3"
+)
+
 MARK_ANALYZED_SQL = (
     "UPDATE images SET status = 'analyzed', receipt_id = $2, error = NULL, "
     "analyzed_at = CURRENT_TIMESTAMP WHERE id = $1"
@@ -130,6 +137,20 @@ class ImageDB:
         """Return the analysis queue: pending and failed images, oldest first."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(LIST_PENDING_IMAGES_SQL)
+        return [self._image_row_from_record(row) for row in rows]
+
+    async def list_images(
+        self,
+        status: list[str] | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ImageRow]:
+        """List image rows (newest first), optionally filtered by status."""
+        async with self.pool.acquire() as conn:
+            if status:
+                rows = await conn.fetch(LIST_IMAGES_BY_STATUS_SQL, status, limit, offset)
+            else:
+                rows = await conn.fetch(LIST_IMAGES_SQL, limit, offset)
         return [self._image_row_from_record(row) for row in rows]
 
     async def mark_analyzed(self, image_id: int, receipt_id: int) -> None:

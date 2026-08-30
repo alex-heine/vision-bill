@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from .api.images import router as image_router
 from .api.receipts import router as receipt_router
 from .api.system.llm import router as llm_router
 from .api.system.main import router as system_router
@@ -59,6 +60,7 @@ app = FastAPI(title="Receipt Tracker API", lifespan=lifespan)
 
 # JSON API routes
 app.include_router(receipt_router, prefix="/api/v1/receipts", tags=["Receipts"])
+app.include_router(image_router, prefix="/api/v1/images", tags=["Images"])
 # System routes
 app.include_router(system_router, prefix="/api/v1/system", tags=["System"])
 # LLM routes

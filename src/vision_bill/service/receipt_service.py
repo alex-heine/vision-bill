@@ -113,6 +113,14 @@ class ReceiptService:
     async def list_pending_images(self) -> list[ImageRow]:
         return await self._image_db.list_pending_images()
 
+    async def list_images(
+        self,
+        status: list[str] | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ImageRow]:
+        return await self._image_db.list_images(status=status, limit=limit, offset=offset)
+
     async def mark_image_analyzed(self, image_id: int, receipt_id: int) -> None:
         await self._image_db.mark_analyzed(image_id, receipt_id)
 

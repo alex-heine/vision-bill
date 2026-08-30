@@ -1,5 +1,6 @@
 """Tests for AnalysisScheduler.process_pending with fully mocked collaborators."""
 
+import asyncio
 from collections.abc import Generator
 from datetime import date as Date
 from decimal import Decimal
@@ -198,3 +199,51 @@ def test_check_interval_from_settings(scheduler_context: SchedulerContext) -> No
     scheduler = scheduler_context[0]
 
     assert scheduler.check_interval_seconds == 300
+
+
+@pytest.mark.asyncio
+async def test_process_pending_lock_serializes(scheduler_context: SchedulerContext) -> None:
+    """A second concurrent cycle waits on the lock instead of overlapping."""
+    scheduler, _, _, image_db = scheduler_context
+    release = asyncio.Event()
+    state = {"entered": False}
+
+    async def fake_list_pending() -> list[ImageRow]:
+        if not state["entered"]:
+            state["entered"] = True
+            await release.wait()  # first cycle blocks while holding the lock
+        return []
+
+    image_db.list_pending_images = fake_list_pending
+
+    first = asyncio.create_task(scheduler.process_pending())
+    second = asyncio.create_task(scheduler.process_pending())
+
+    for _ in range(100):
+        if state["entered"]:
+            break
+        await asyncio.sleep(0)
+
+    # The first cycle holds the lock; the second must still be waiting for it.
+    assert state["entered"] is True
+    assert not second.done()
+
+    release.set()
+    await asyncio.wait([first, second])
+
+    assert (await first) == []
+    assert (await second) == []
+
+
+@pytest.mark.asyncio
+async def test_start_stop_lifecycle(scheduler_context: SchedulerContext) -> None:
+    """start() spawns a background task; a second start is a no-op; stop() clears it."""
+    scheduler = scheduler_context[0]
+
+    await scheduler.start()
+    assert scheduler._task is not None
+    assert not scheduler._task.done()
+
+    await scheduler.start()  # idempotent: must not spawn a second task
+    await scheduler.stop()
+    assert scheduler._task is None
