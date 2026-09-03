@@ -46,6 +46,7 @@ def _image_row(image_id: int = 1, **overrides: object) -> dict[str, Any]:
         "status": "pending",
         "error": None,
         "receipt_id": None,
+        "bypass_review": False,
         "created_at": datetime(2024, 1, 15, 14, 30, tzinfo=UTC),
         "analyzed_at": None,
     }
@@ -145,7 +146,7 @@ async def test_store_image(db: ImageDB) -> None:
     """store_image should INSERT with the right params and map the RETURNING row."""
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(return_value=_image_row(image_id=1))
+    mock_conn.fetchrow = AsyncMock(return_value=_image_row(image_id=1, bypass_review=True))
 
     result = await db.store_image(
         "/tmp/a.png",
@@ -153,22 +154,25 @@ async def test_store_image(db: ImageDB) -> None:
         media_type="image/png",
         size_bytes=123,
         status="pending",
+        bypass_review=True,
     )
 
     assert isinstance(result, ImageRow)
     assert result.id == 1
     assert result.image_path == "/tmp/a.png"
     assert result.status == "pending"
+    assert result.bypass_review is True
 
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
     assert fetchrow_call.args[0] == INSERT_IMAGE_SQL
-    # original_filename, media_type, size_bytes, image_path ($4), status ($5)
+    # original_filename, media_type, size_bytes, image_path ($4), status ($5), bypass ($6)
     assert fetchrow_call.args[1] == "a.png"
     assert fetchrow_call.args[2] == "image/png"
     assert fetchrow_call.args[3] == 123
     assert fetchrow_call.args[4] == "/tmp/a.png"
     assert fetchrow_call.args[5] == "pending"
+    assert fetchrow_call.args[6] is True
 
 
 @pytest.mark.asyncio

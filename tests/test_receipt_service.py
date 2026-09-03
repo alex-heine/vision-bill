@@ -85,7 +85,8 @@ async def test_analyse_receipt_from_model_success(
 
     # Assert
     assert result == mock_receipt
-    mock_provider.analyse_receipt_from_model.assert_called_once_with(model_id, mock_path)
+    # No DB in this context -> the provider gets an empty tag vocabulary.
+    mock_provider.analyse_receipt_from_model.assert_called_once_with(model_id, mock_path, tags=[])
     mock_path.unlink.assert_called_once()
 
 
@@ -106,7 +107,7 @@ async def test_analyse_receipt_from_model_failure(
         await service.analyse_receipt_from_model(model_id, image_bytes)
 
     assert error_msg in str(exc_info.value)
-    mock_provider.analyse_receipt_from_model.assert_called_once_with(model_id, mock_path)
+    mock_provider.analyse_receipt_from_model.assert_called_once_with(model_id, mock_path, tags=[])
     mock_path.unlink.assert_called_once()
 
 
@@ -140,7 +141,7 @@ async def test_extract_receipt_all_models_success(
     )
 
     # Use side_effect to return different values for different calls
-    async def side_effect(model_id: str, path: Path) -> Receipt:
+    async def side_effect(model_id: str, path: Path, tags: list[str] | None = None) -> Receipt:
         if model_id == "model1":
             return receipt1
         elif model_id == "model2":
@@ -188,7 +189,7 @@ async def test_extract_receipt_all_models_value_error(
         total=Decimal("20.00"),
     )
 
-    async def side_effect(model_id: str, path: Path) -> Receipt:
+    async def side_effect(model_id: str, path: Path, tags: list[str] | None = None) -> Receipt:
         if model_id == "model1":
             raise ValueError("Invalid receipt format")
         elif model_id == "model2":
@@ -236,7 +237,7 @@ async def test_extract_receipt_all_models_exception(
         total=Decimal("20.00"),
     )
 
-    async def side_effect(model_id: str, path: Path) -> Receipt:
+    async def side_effect(model_id: str, path: Path, tags: list[str] | None = None) -> Receipt:
         if model_id == "model1":
             raise RuntimeError("Generic failure")
         elif model_id == "model2":
@@ -276,12 +277,15 @@ def _make_receipt() -> Receipt:
         date=Date(2024, 1, 15),
         time="14:30",
         currency="USD",
+        category="grocery",
         line_items=[
             LineItem(
                 description="Item A",
                 quantity=2,
                 unit_price=Decimal("10.00"),
                 total_price=Decimal("20.00"),
+                category="grocery",
+                tags=["test"],
             )
         ],
         taxes=[TaxLine(name="VAT", rate=0.19, amount=Decimal("4.50"))],
@@ -303,6 +307,7 @@ def _make_row(**overrides: object) -> ReceiptRow:
         "date": Date(2024, 1, 15),
         "time": "14:30:00",
         "currency": "USD",
+        "category": "other",
         "subtotal": Decimal("50.00"),
         "discount_total": Decimal(0),
         "tax_total": Decimal("4.50"),
@@ -324,6 +329,7 @@ def delegation_context(settings: Settings) -> Generator[DelegationContext, None,
     with (
         patch("vision_bill.service.receipt_service.ReceiptDB") as mock_db_class,
         patch("vision_bill.service.receipt_service.ImageDB") as mock_image_db_class,
+        patch("vision_bill.service.receipt_service.UserDB") as mock_user_db_class,
     ):
         mock_db = mock_db_class.return_value
         mock_db.init_db = AsyncMock()
@@ -334,6 +340,8 @@ def delegation_context(settings: Settings) -> Generator[DelegationContext, None,
         mock_db.get_receipt_with_details = AsyncMock()
         mock_db.update_receipt = AsyncMock()
         mock_db.verify_receipt = AsyncMock()
+        mock_db.list_tags = AsyncMock(return_value=[])
+        mock_db.create_tag = AsyncMock(return_value=True)
         mock_db.pool = MagicMock()
         mock_db.is_ready = True
 
@@ -349,6 +357,11 @@ def delegation_context(settings: Settings) -> Generator[DelegationContext, None,
         mock_image_db.update_image_path = AsyncMock()
         mock_image_db.delete_image = AsyncMock()
 
+        mock_user_db = mock_user_db_class.return_value
+        mock_user_db.init_db = AsyncMock()
+        mock_user_db.destroy_db = AsyncMock()
+        mock_user_db.is_ready = True
+
         service = ReceiptService(settings.images, settings.pg, MagicMock(spec=LLMProvider))
         yield service, mock_db, mock_image_db
 
@@ -362,6 +375,7 @@ async def test_init_db_delegates(delegation_context: DelegationContext) -> None:
 
     mock_db.init_db.assert_awaited_once_with()
     mock_image_db.init_db.assert_awaited_once_with()
+    service.user_db.init_db.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
@@ -373,6 +387,7 @@ async def test_destroy_db_delegates(delegation_context: DelegationContext) -> No
 
     mock_db.destroy_db.assert_awaited_once_with()
     mock_image_db.destroy_db.assert_awaited_once_with()
+    service.user_db.destroy_db.assert_awaited_once_with()
 
 
 def test_pool_property_delegates(delegation_context: DelegationContext) -> None:
@@ -401,9 +416,11 @@ async def test_persist_receipt_delegates(delegation_context: DelegationContext) 
     row = _make_row()
     mock_db.persist_receipt.return_value = row
 
-    result = await service.persist_receipt(receipt, image_id=5, status="unverified")
+    result = await service.persist_receipt(receipt, image_id=5, status="verified", verified=True)
 
-    mock_db.persist_receipt.assert_awaited_once_with(receipt, image_id=5, status="unverified")
+    mock_db.persist_receipt.assert_awaited_once_with(
+        receipt, image_id=5, status="verified", verified=True
+    )
     assert result is row
 
 
@@ -429,7 +446,9 @@ async def test_list_receipts_delegates(delegation_context: DelegationContext) ->
 
     result = await service.list_receipts(limit=10, offset=5)
 
-    mock_db.list_receipts.assert_awaited_once_with(limit=10, offset=5)
+    mock_db.list_receipts.assert_awaited_once_with(
+        limit=10, offset=5, status=None, date_from=None, date_to=None, search=None
+    )
     assert result is rows
 
 
@@ -474,6 +493,79 @@ async def test_verify_receipt_delegates(delegation_context: DelegationContext) -
     assert result is row
 
 
+# ── Tag vocabulary delegation ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_tags_delegates(delegation_context: DelegationContext) -> None:
+    """list_tags should return the DB vocabulary as-is."""
+    service, mock_db, _ = delegation_context
+    mock_db.list_tags.return_value = ["coffee", "food"]
+
+    result = await service.list_tags()
+
+    mock_db.list_tags.assert_awaited_once_with()
+    assert result == ["coffee", "food"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raw, normalized",
+    [
+        ("coffee", "coffee"),
+        ("  Coffee  ", "coffee"),
+        ("  Hot   Drink ", "hot drink"),
+    ],
+)
+async def test_create_tag_normalizes_and_reports_created(
+    delegation_context: DelegationContext, raw: str, normalized: str
+) -> None:
+    """create_tag trims/collapses whitespace and lower-cases before insert."""
+    service, mock_db, _ = delegation_context
+    mock_db.create_tag.return_value = True
+
+    name, created = await service.create_tag(raw)
+
+    mock_db.create_tag.assert_awaited_once_with(normalized)
+    assert name == normalized
+    assert created is True
+
+
+@pytest.mark.asyncio
+async def test_create_tag_existing_is_not_created(delegation_context: DelegationContext) -> None:
+    """When the DB reports the tag already exists, created is False (no error)."""
+    service, mock_db, _ = delegation_context
+    mock_db.create_tag.return_value = False
+
+    name, created = await service.create_tag("coffee")
+
+    assert name == "coffee"
+    assert created is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raw", ["", "   ", "\t\n"])
+async def test_create_tag_blank_raises(delegation_context: DelegationContext, raw: str) -> None:
+    """Blank names never reach the DB."""
+    service, mock_db, _ = delegation_context
+
+    with pytest.raises(ValueError, match="must not be blank"):
+        await service.create_tag(raw)
+
+    mock_db.create_tag.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_tag_too_long_raises(delegation_context: DelegationContext) -> None:
+    """Names longer than the column width are rejected before the DB."""
+    service, mock_db, _ = delegation_context
+
+    with pytest.raises(ValueError, match="at most 100"):
+        await service.create_tag("x" * 101)
+
+    mock_db.create_tag.assert_not_awaited()
+
+
 # ── Image (images table) delegation tests ────────────────────────────
 
 
@@ -487,6 +579,7 @@ def _make_image_row(**overrides: object) -> ImageRow:
         "status": "pending",
         "error": None,
         "receipt_id": None,
+        "bypass_review": False,
         "created_at": Date(2024, 1, 15),
         "analyzed_at": None,
     }
@@ -507,6 +600,7 @@ async def test_store_image_delegates(delegation_context: DelegationContext) -> N
         media_type="image/png",
         size_bytes=123,
         status="pending",
+        bypass_review=True,
     )
 
     mock_image_db.store_image.assert_awaited_once_with(
@@ -515,6 +609,7 @@ async def test_store_image_delegates(delegation_context: DelegationContext) -> N
         media_type="image/png",
         size_bytes=123,
         status="pending",
+        bypass_review=True,
     )
     assert result is row
 

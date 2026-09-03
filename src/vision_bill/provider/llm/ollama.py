@@ -11,7 +11,7 @@ from ...helper.logging_config import setup_logging
 setup_logging()
 
 from ...model.receipt import Receipt
-from ...provider.llm.base import LLMProvider, ModelInfo
+from ...provider.llm.base import AnalysisResult, LLMProvider, ModelInfo
 
 try:
     from ollama import AsyncClient, ListResponse, ResponseError
@@ -58,6 +58,7 @@ class OllamaProvider(LLMProvider):
                 continue
 
             mi = ModelInfo(id=model.model)
+            mi.digest = getattr(model, "digest", None)
             if model.details:
                 mi.parameter_size = model.details.parameter_size
 
@@ -67,8 +68,18 @@ class OllamaProvider(LLMProvider):
 
         return result
 
-    async def analyse_receipt_from_model(self, model_id: str, image: Path) -> Receipt:
-        messages = self._build_image_messages(image)
+    async def analyse_receipt_from_model(
+        self, model_id: str, image: Path, tags: Sequence[str] | None = None
+    ) -> Receipt:
+        return (await self.analyse_receipt_with_metadata(model_id, image, tags=tags)).receipt
+
+    async def analyse_receipt_with_metadata(
+        self, model_id: str, image: Path, tags: Sequence[str] | None = None
+    ) -> AnalysisResult:
+        from time import perf_counter
+
+        started = perf_counter()
+        messages = self._build_image_messages(image, tags)
 
         last_error: Exception | None = None
         for attempt in range(1, RETRY_LIMIT + 1):
@@ -88,7 +99,11 @@ class OllamaProvider(LLMProvider):
                 )
 
             try:
-                return self.parse_llm_response(content)
+                return AnalysisResult(
+                    receipt=self.parse_llm_response(content),
+                    attempts=attempt,
+                    elapsed_ms=(perf_counter() - started) * 1000,
+                )
             except ValueError as e:
                 logger.warning(
                     "Attempt %d/%d: failed to parse LLM response: %s",
@@ -114,13 +129,15 @@ class OllamaProvider(LLMProvider):
 
         return response.message.content or ""
 
-    def _build_image_messages(self, image: Path) -> list[dict[str, Any]]:
+    def _build_image_messages(
+        self, image: Path, tags: Sequence[str] | None = None
+    ) -> list[dict[str, Any]]:
         if not image.exists():
             raise FileNotFoundError(f"Image not found at: {image}")
         return [
             {
                 "role": "user",
-                "content": self.build_prompt(),
+                "content": self.build_prompt(tags),
                 "images": [image],
             }
         ]

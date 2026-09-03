@@ -7,6 +7,7 @@ from ..config import Settings
 from ..model.db.image import ImageRow
 from ..provider.db.image_db import ImageDB
 from ..provider.llm.base import LLMProvider, ModelInfo
+from .image_service import ImageService
 from .receipt_service import ReceiptService
 
 logger = logging.getLogger(__name__)
@@ -41,11 +42,13 @@ class AnalysisScheduler:
         provider: LLMProvider,
         receipt_service: ReceiptService,
         image_db: ImageDB,
+        image_service: ImageService | None = None,
     ):
         self._settings = settings
         self._provider = provider
         self._receipt_service = receipt_service
         self._image_db = image_db
+        self._image_service = image_service
         self._interval = settings.worker.check_interval_seconds
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
@@ -131,14 +134,28 @@ class AnalysisScheduler:
             await self._image_db.mark_failed(image.id, str(e))
             return PendingImageResult(image_id=image.id, status="failed", error=str(e))
 
+        bypass = image.bypass_review
         try:
             row = await self._receipt_service.persist_receipt(
-                receipt, image_id=image.id, status="unverified"
+                receipt,
+                image_id=image.id,
+                status="verified" if bypass else "unverified",
+                verified=bypass,
             )
             await self._image_db.mark_analyzed(image.id, row.id)
         except Exception as e:  # noqa: BLE001 - worker boundary: fail the image, never the cycle
             error = f"Failed to persist receipt: {e}"
             await self._image_db.mark_failed(image.id, error)
             return PendingImageResult(image_id=image.id, status="failed", error=error)
+
+        if bypass and self._image_service is not None:
+            try:
+                perm_path = self._image_service.store_perm_image(image_path, row.id)
+                if perm_path is not None:
+                    await self._image_db.update_image_path(image.id, str(perm_path))
+            except Exception:
+                logger.exception(
+                    "Failed to move bypass-reviewed image %d to permanent storage", image.id
+                )
 
         return PendingImageResult(image_id=image.id, status="analyzed", receipt_id=row.id)

@@ -1,0 +1,218 @@
+{
+	"app": {
+		"name": "Vision Bill"
+	},
+	"nav": {
+		"dashboard": "Übersicht",
+		"statistics": "Statistiken",
+		"upload": "Hochladen",
+		"queue": "Warteschlange",
+		"receipts": "Belege",
+		"benchmarks": "Benchmarks",
+		"settings": "Einstellungen"
+	},
+	"theme": {
+		"light": "Hell",
+		"dark": "Dunkel",
+		"toggle": "Design wechseln"
+	},
+	"language": {
+		"label": "Sprache"
+	},
+	"common": {
+		"close": "Schließen",
+		"save": "Speichern",
+		"cancel": "Abbrechen",
+		"confirm": "Bestätigen",
+		"delete": "Löschen",
+		"remove": "Entfernen",
+		"loading": "Wird geladen…",
+		"retry": "Erneut versuchen",
+		"finish": "Fertig",
+		"error": "Etwas ist schiefgegangen.",
+		"back": "Zurück"
+	},
+	"time": {
+		"justNow": "gerade eben",
+		"minutesAgo": "vor {count} Min.",
+		"hoursAgo": "vor {count} Std.",
+		"daysAgo": "vor {count} T."
+	},
+	"categories": {
+		"grocery": "Lebensmittel",
+		"electronics": "Elektro",
+		"clothing": "Kleidung",
+		"restaurant": "Gaststätte",
+		"fuel": "Kraftstoff",
+		"pharmacy": "Apotheke",
+		"entertainment": "Unterhaltung",
+		"other": "Sonstiges"
+	},
+	"payment": {
+		"cash": "Bar",
+		"credit_card": "Kreditkarte",
+		"debit_card": "Debitkarte",
+		"mobile_payment": "Mobile Zahlung",
+		"check": "Scheck",
+		"other": "Sonstiges",
+		"unknown": "Unbekannt"
+	},
+	"upload": {
+		"title": "Beleg hochladen",
+		"chooseFile": "Aus der Galerie wählen",
+		"takePhoto": "Foto aufnehmen",
+		"dropHint": "oder ein Bild hierher ziehen",
+		"supportedTypes": "JPG, PNG, WebP, AVIF oder HEIC",
+		"bypassLabel": "Prüfung überspringen – direkt als geprüft speichern",
+		"bypassHint": "Der Beleg wird ohne manuelle Prüfung direkt als geprüft gespeichert.",
+		"upload": "Hochladen",
+		"uploading": "{file} wird hochgeladen…",
+		"queuedTitle": "Zur Analysewarteschlange hinzugefügt",
+		"queuedBody": "Derzeit ist kein Visuell-Modell erreichbar. Der Hintergrund-Dienst analysiert das Bild in Kürze.",
+		"openQueue": "Warteschlange öffnen",
+		"reviewTitle": "Erkannte Daten prüfen",
+		"errorUnsupported": "Nicht unterstützter Bilddatentyp",
+		"errorDb": "Datenbank nicht verfügbar",
+		"errorGeneric": "Hochladen fehlgeschlagen"
+	},
+	"queue": {
+		"title": "Analysewarteschlange",
+		"emptyTitle": "Die Warteschlange ist leer",
+		"emptyBody": "Ausstehende und fehlgeschlagene Bilder erscheinen hier.",
+		"analyzeNow": "Jetzt analysieren",
+		"analyzing": "Wird analysiert…",
+		"analyzed": "{count} Bild(er) verarbeitet",
+		"analyzeFailed": "Analyselauftrag fehlgeschlagen",
+		"pending": "Ausstehend",
+		"failed": "Fehlgeschlagen",
+		"deleteTitle": "Bild löschen?",
+		"deleteBody": "„{file}“ wird aus der Warteschlange und von der Festplatte entfernt.",
+		"deleted": "Bild gelöscht",
+		"deleteConflict": "Dieses Bild kann nicht mehr gelöscht werden.",
+		"deleteFailed": "Löschen fehlgeschlagen",
+		"loadError": "Warteschlange konnte nicht geladen werden."
+	},
+	"receipt": {
+		"verified": "Geprüft",
+		"unverified": "Nicht geprüft",
+		"verify": "Prüfen",
+		"verifyTitle": "Beleg prüfen?",
+		"verifyBody": "Der Beleg wird als geprüft markiert und das Bild wird in den dauerhaften Speicher verschoben.",
+		"verifySuccess": "Beleg geprüft",
+		"verifyConflict": "Der Beleg ist bereits geprüft.",
+		"verifyFailed": "Prüfung fehlgeschlagen",
+		"saved": "Änderungen gespeichert",
+		"saveFailed": "Speichern fehlgeschlagen",
+		"unsaved": "Nicht gespeicherte Änderungen",
+		"notFoundTitle": "Beleg nicht gefunden",
+		"notFoundBody": "Dieser Beleg existiert nicht oder wurde gelöscht.",
+		"imageUnavailable": "Bild nicht verfügbar",
+		"deleteTitle": "Beleg löschen?",
+		"deleteBody": "„{merchant}“ wird zusammen mit dem Bild gelöscht.",
+		"deleted": "Beleg gelöscht",
+		"deleteFailed": "Löschen fehlgeschlagen",
+		"deleteBlocked": "Dieser Beleg wird in einem Benchmark-Lauf verwendet und kann nicht gelöscht werden."
+	},
+	"receipts": {
+		"searchPlaceholder": "Belege durchsuchen…",
+		"filter": "Nach Status filtern",
+		"filterAll": "Alle Status",
+		"empty": "Noch keine Belege.",
+		"noResults": "Keine Belege entsprechen Ihrer Suche.",
+		"unknownVendor": "Unbekannter Händler"
+	},
+	"dashboard": {
+		"verifiedOnly": "Nur geprüfte Belege",
+		"openStatistics": "Statistiken öffnen",
+		"loadError": "Übersicht konnte nicht geladen werden.",
+		"emptyTitle": "Noch keine geprüften Belege",
+		"emptyBody": "Prüfen Sie einen Beleg, damit er in Übersicht und Statistiken erscheint.",
+		"verifiedReceipts": "Geprüfte Belege",
+		"thisMonth": "Diesen Monat",
+		"topCategories": "Häufigste Kategorien"
+	},
+	"statistics": {
+		"emptyTitle": "Noch keine Statistiken",
+		"emptyBody": "Statistiken erscheinen nach dem Prüfen von Belegen.",
+		"receiptCount": "Geprüfte Belege",
+		"totalSpend": "Gesamtausgaben",
+		"byCategory": "Ausgaben nach Kategorie"
+	},
+	"editor": {
+		"details": "Details",
+		"merchant": "Händler",
+		"address": "Adresse",
+		"number": "Belegnummer",
+		"date": "Datum",
+		"time": "Uhrzeit",
+		"currency": "Währung",
+		"category": "Kategorie",
+		"paymentMethod": "Zahlungsart",
+		"confidence": "Konfidenz (%)",
+		"amounts": "Beträge",
+		"subtotal": "Zwischensumme",
+		"discount": "Rabatt",
+		"taxTotal": "Steuergesamt",
+		"tip": "Trinkgeld",
+		"total": "Gesamt",
+		"expectedTotal": "Erwartete Gesamtsumme (Zwischensumme − Rabatt + Steuer + Trinkgeld)",
+		"totalMismatch": "Weicht um {diff} von der eingetragenen Gesamtsumme ab.",
+		"lineItems": "Positionen",
+		"noLineItems": "Noch keine Positionen.",
+		"addItem": "Position hinzufügen",
+		"description": "Bezeichnung",
+		"quantity": "Menge",
+		"unitPrice": "Einzelpreis",
+		"totalPrice": "Gesamt",
+		"tagsSelect": "Standard-Schlagwörter",
+		"tagsSuggested": "Vorgeschlagene Schlagwörter",
+		"tagsSuggestedBadge": "Vorschlag",
+		"tagsKeep": "Als Standard übernehmen",
+		"tagsRemove": "Schlagwort entfernen",
+		"tagsAdd": "Schlagwort hinzufügen",
+		"tagsAddPlaceholder": "Neues Schlagwort eingeben…",
+		"tagsAddButton": "Hinzufügen",
+		"tagsExisting": "vorhanden",
+		"tagsExistsHint": "„{tag}“ ist bereits ein Standard-Schlagwort",
+		"tagsNewHint": "Wird als neues Schlagwort hinzugefügt",
+		"tagsCreateFailed": "Schlagwort konnte nicht hinzugefügt werden",
+		"taxes": "Steuern",
+		"noTaxes": "Keine Steuern.",
+		"addTax": "Steuer hinzufügen",
+		"taxName": "Name",
+		"taxRate": "Satz (0–1)",
+		"amount": "Betrag",
+		"saveAndVerify": "Speichern & prüfen",
+		"merchantRequired": "Händler ist erforderlich.",
+		"dateRequired": "Ein gültiges Datum ist erforderlich.",
+		"invalidAmount": "Betrag muss eine nicht negative Zahl sein.",
+		"invalidQuantity": "Menge muss größer als null sein.",
+		"invalidRate": "Satz muss eine Zahl zwischen 0 und 1 sein.",
+		"invalidConfidence": "Konfidenz muss eine ganze Zahl zwischen 0 und 100 sein."
+	},
+	"pages": {
+		"dashboard": {
+			"title": "Übersicht"
+		},
+		"statistics": {
+			"title": "Statistiken"
+		},
+		"upload": {
+			"title": "Beleg hochladen"
+		},
+		"queue": {
+			"title": "Analysewarteschlange"
+		},
+		"receipts": {
+			"title": "Belege",
+			"placeholder": "Hier erscheinen Ihre gespeicherten Belege."
+		},
+		"receiptDetail": {
+			"title": "Beleg {id}"
+		},
+		"settings": {
+			"title": "Einstellungen",
+			"placeholder": "Hier erscheinen die Anwendungseinstellungen."
+		}
+	}
+}

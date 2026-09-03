@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+
 import requests
 
 url = "http://localhost:8080/api/v1/images"

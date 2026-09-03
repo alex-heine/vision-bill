@@ -21,10 +21,10 @@ from ...model.receipt import Receipt
 INSERT_RECEIPT_SQL = """
     INSERT INTO receipts
         (confidence, merchant_name, merchant_address, receipt_number, date, time,
-         currency, subtotal, discount_total, tax_total, tip, total,
-         payment_method, status, image_id)
+         currency, category, subtotal, discount_total, tax_total, tip, total,
+         payment_method, status, image_id, verified)
     VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
     RETURNING *
 """
 
@@ -37,24 +37,26 @@ UPDATE_RECEIPT_SQL = """
         date            = $5,
         time            = $6,
         currency        = $7,
-        subtotal        = $8,
-        discount_total  = $9,
-        tax_total       = $10,
-        tip             = $11,
-        total           = $12,
-        payment_method  = $13
-    WHERE id = $14
+        category        = $8,
+        subtotal        = $9,
+        discount_total  = $10,
+        tax_total       = $11,
+        tip             = $12,
+        total           = $13,
+        payment_method  = $14
+    WHERE id = $15
     RETURNING *
 """
 
 DELETE_LINE_ITEMS_SQL = "DELETE FROM line_items WHERE receipt_id = $1"
 DELETE_TAXES_SQL = "DELETE FROM taxes WHERE receipt_id = $1"
+DELETE_RECEIPT_SQL = "DELETE FROM receipts WHERE id = $1 RETURNING *"
 
 INSERT_LINE_ITEM_SQL = """
     INSERT INTO line_items
         (receipt_id, description, quantity, unit_price,
-         total_price, category)
-    VALUES ($1, $2, $3, $4, $5, $6)
+         total_price, category, tags)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
 """
 
 INSERT_TAX_SQL = """
@@ -72,9 +74,11 @@ GET_RECEIPT_WITH_IMAGE_SQL = """
     LEFT JOIN images i ON i.id = r.image_id
     WHERE r.id = $1
 """
-LIST_RECEIPTS_SQL = "SELECT * FROM receipts ORDER BY date DESC LIMIT $1 OFFSET $2"
+LIST_RECEIPTS_BASE_SQL = "SELECT * FROM receipts"
 LIST_LINE_ITEMS_SQL = "SELECT * FROM line_items WHERE receipt_id = $1 ORDER BY id"
 LIST_TAXES_SQL = "SELECT * FROM taxes WHERE receipt_id = $1 ORDER BY id"
+LIST_TAGS_SQL = "SELECT name FROM tags ORDER BY name"
+INSERT_TAG_SQL = "INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING name"
 VERIFY_RECEIPT_SQL = (
     "UPDATE receipts SET status = 'verified', verified = TRUE WHERE id = $1 RETURNING *"
 )
@@ -160,6 +164,7 @@ class ReceiptDB:
             unit_price=Decimal(d["unit_price"]),
             total_price=Decimal(d["total_price"]),
             category=d["category"],
+            tags=list(d.get("tags") or []),
         )
 
     @staticmethod
@@ -187,6 +192,7 @@ class ReceiptDB:
                     float(item.unit_price),
                     float(item.total_price),
                     item.category,
+                    list(item.tags),
                 )
 
         if receipt.taxes:
@@ -206,6 +212,7 @@ class ReceiptDB:
         receipt: Receipt,
         image_id: int | None = None,
         status: str = "unverified",
+        verified: bool = False,
     ) -> ReceiptRow:
         """Insert a receipt (with line items and taxes) into PostgreSQL.
 
@@ -228,6 +235,7 @@ class ReceiptDB:
                 receipt.date,
                 self._receipt_time_value(receipt),
                 receipt.currency,
+                receipt.category,
                 float(receipt.subtotal),
                 float(receipt.discount_total),
                 float(receipt.tax_total),
@@ -236,6 +244,7 @@ class ReceiptDB:
                 receipt.payment_method,
                 status,
                 image_id,
+                verified,
             )
             receipt_id: int = row["id"]
             await self._insert_children(conn, receipt_id, receipt)
@@ -259,6 +268,7 @@ class ReceiptDB:
                 receipt.date,
                 self._receipt_time_value(receipt),
                 receipt.currency,
+                receipt.category,
                 float(receipt.subtotal),
                 float(receipt.discount_total),
                 float(receipt.tax_total),
@@ -292,6 +302,21 @@ class ReceiptDB:
             return None
         return self._receipt_row_from_record(row)
 
+    async def delete_receipt(self, receipt_id: int) -> ReceiptRow | None:
+        """Delete a receipt row. Line items and taxes cascade via their foreign keys.
+
+        Returns the deleted row, or None when no receipt with the given id exists.
+        A ``benchmark_tasks`` row still referencing the receipt raises
+        ``asyncpg.ForeignKeyViolationError`` (that FK has no ON DELETE rule).
+        """
+        logger.info("Deleting receipt %d", receipt_id)
+
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(DELETE_RECEIPT_SQL, receipt_id)
+        if row is None:
+            return None
+        return self._receipt_row_from_record(row)
+
     # ── Query helpers ────────────────────────────────────────────────
 
     async def get_receipt_by_id(self, receipt_id: int) -> ReceiptRow | None:
@@ -306,10 +331,41 @@ class ReceiptDB:
         self,
         limit: int = 50,
         offset: int = 0,
+        status: list[str] | None = None,
+        date_from: Date | None = None,
+        date_to: Date | None = None,
+        search: str | None = None,
     ) -> list[ReceiptRow]:
-        """Return a paginated list of receipts ordered by date descending."""
+        """Return a paginated list of receipts ordered by date descending.
+
+        Optional filters: ``status`` (IN list), an inclusive ``date_from`` /
+        ``date_to`` range, and case-insensitive ``search`` over merchant name
+        or receipt number.
+        """
+        where: list[str] = []
+        args: list[Any] = []
+        if status:
+            args.append(status)
+            where.append(f"status = ANY(${len(args)})")
+        if date_from is not None:
+            args.append(date_from)
+            where.append(f"date >= ${len(args)}")
+        if date_to is not None:
+            args.append(date_to)
+            where.append(f"date <= ${len(args)}")
+        if search:
+            pattern = f"%{search}%"
+            args.append(pattern)
+            where.append(f"(merchant_name ILIKE ${len(args)} OR receipt_number ILIKE ${len(args)})")
+
+        sql = LIST_RECEIPTS_BASE_SQL
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += f" ORDER BY date DESC LIMIT ${len(args) + 1} OFFSET ${len(args) + 2}"
+        args.extend([limit, offset])
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(LIST_RECEIPTS_SQL, limit, offset)
+            rows = await conn.fetch(sql, *args)
         return [self._receipt_row_from_record(row) for row in rows]
 
     async def get_receipt_with_details(self, receipt_id: int) -> ReceiptWithDetails | None:
@@ -336,3 +392,19 @@ class ReceiptDB:
             taxes=[self._tax_row_from_record(r) for r in tax_rows],
             image_path=image_path,
         )
+
+    async def list_tags(self) -> list[str]:
+        """Return the allowed line-item tag vocabulary, ordered by name."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(LIST_TAGS_SQL)
+        return [row["name"] for row in rows]
+
+    async def create_tag(self, name: str) -> bool:
+        """Insert a tag, returning True when it was newly created.
+
+        Returns False when a tag with this name already exists (ON CONFLICT
+        makes the insert a no-op rather than an error).
+        """
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(INSERT_TAG_SQL, name)
+        return row is not None

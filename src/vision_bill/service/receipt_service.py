@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import asyncpg
@@ -12,6 +13,7 @@ from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
 from ..provider.db.image_db import ImageDB
 from ..provider.db.receipt_db import ReceiptDB
+from ..provider.db.user_db import UserDB
 from ..provider.llm.base import LLMProvider, ModelInfo
 from .image_service import ImageService
 
@@ -23,6 +25,10 @@ class ModelResult:
     model_id: str
     receipt: Receipt | None
     error: str | None = None
+
+
+class ReceiptReferencedError(Exception):
+    """Raised when a receipt cannot be deleted because a benchmark references it."""
 
 
 class ReceiptService:
@@ -38,16 +44,19 @@ class ReceiptService:
         self._image_service = ImageService(image_settings)
         self._db = ReceiptDB(pg_settings)
         self._image_db = ImageDB(pg_settings)
+        self._user_db = UserDB(pg_settings)
 
     # ── Database delegation ──────────────────────────────────────────
 
     async def init_db(self) -> None:
         await self._db.init_db()
         await self._image_db.init_db()
+        await self._user_db.init_db()
 
     async def destroy_db(self) -> None:
         await self._db.destroy_db()
         await self._image_db.destroy_db()
+        await self._user_db.destroy_db()
 
     @property
     def pool(self) -> asyncpg.Pool:
@@ -62,13 +71,40 @@ class ReceiptService:
         """The images-table provider, exposed for the scheduler and API."""
         return self._image_db
 
+    @property
+    def user_db(self) -> UserDB:
+        """The users-table provider, exposed for auth and ownership backfill."""
+        return self._user_db
+
+    async def list_tags(self) -> list[str]:
+        """Return the allowed line-item tag vocabulary from the database."""
+        return await self._db.list_tags()
+
+    async def create_tag(self, raw_name: str) -> tuple[str, bool]:
+        """Normalize a tag name and make sure it exists in the tag vocabulary.
+
+        Returns ``(name, created)`` where ``created`` is False when a tag with
+        this (normalized) name already existed. Raises ``ValueError`` for
+        names that are blank or too long.
+        """
+        name = " ".join(raw_name.split()).lower()
+        if not name:
+            raise ValueError("Tag name must not be blank")
+        if len(name) > 100:
+            raise ValueError("Tag name must be at most 100 characters long")
+        created = await self._db.create_tag(name)
+        return name, created
+
     async def persist_receipt(
         self,
         receipt: Receipt,
         image_id: int | None = None,
         status: str = "unverified",
+        verified: bool = False,
     ) -> ReceiptRow:
-        return await self._db.persist_receipt(receipt, image_id=image_id, status=status)
+        return await self._db.persist_receipt(
+            receipt, image_id=image_id, status=status, verified=verified
+        )
 
     async def get_receipt_by_id(self, receipt_id: int) -> ReceiptRow | None:
         return await self._db.get_receipt_by_id(receipt_id)
@@ -77,8 +113,19 @@ class ReceiptService:
         self,
         limit: int = 50,
         offset: int = 0,
+        status: list[str] | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        search: str | None = None,
     ) -> list[ReceiptRow]:
-        return await self._db.list_receipts(limit=limit, offset=offset)
+        return await self._db.list_receipts(
+            limit=limit,
+            offset=offset,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            search=search,
+        )
 
     async def get_receipt_with_details(self, receipt_id: int) -> ReceiptWithDetails | None:
         return await self._db.get_receipt_with_details(receipt_id)
@@ -89,6 +136,13 @@ class ReceiptService:
     async def verify_receipt(self, receipt_id: int) -> ReceiptRow | None:
         return await self._db.verify_receipt(receipt_id)
 
+    async def delete_receipt(self, receipt_id: int) -> ReceiptRow | None:
+        """Delete a receipt; raises ReceiptReferencedError if a benchmark references it."""
+        try:
+            return await self._db.delete_receipt(receipt_id)
+        except asyncpg.ForeignKeyViolationError as exc:
+            raise ReceiptReferencedError(str(exc)) from exc
+
     # ── Image (images table) delegation ──────────────────────────────
 
     async def store_image(
@@ -98,6 +152,7 @@ class ReceiptService:
         media_type: str | None = None,
         size_bytes: int | None = None,
         status: str = "pending",
+        bypass_review: bool = False,
     ) -> ImageRow:
         return await self._image_db.store_image(
             image_path=image_path,
@@ -105,6 +160,7 @@ class ReceiptService:
             media_type=media_type,
             size_bytes=size_bytes,
             status=status,
+            bypass_review=bypass_review,
         )
 
     async def get_image_by_id(self, image_id: int) -> ImageRow | None:
@@ -143,11 +199,18 @@ class ReceiptService:
         """Return True if the LLM backend is reachable, False otherwise."""
         return await self._provider.check_connection()
 
+    async def _available_tags(self) -> list[str]:
+        """The tag vocabulary for the prompt; empty when the database is unavailable."""
+        return await self._db.list_tags() if self.db_ready else []
+
     async def analyse_receipt_from_path(self, model_id: str, image_path: Path) -> Receipt:
         """Run LLM extraction on an image file whose lifetime the caller owns."""
         logger.info("Analysing receipt using model: %s", model_id)
+        tags = await self._available_tags()
         try:
-            result = await self._provider.analyse_receipt_from_model(model_id, image_path)
+            result = await self._provider.analyse_receipt_from_model(
+                model_id, image_path, tags=tags
+            )
             logger.info("Successfully analysed receipt with model: %s", model_id)
             return result
         except Exception:
@@ -167,13 +230,16 @@ class ReceiptService:
         """Run extraction concurrently across every available model."""
         logger.info("Starting concurrent extraction across all models for uploaded file")
         models = await self.get_available_models()
+        tags = await self._available_tags()
         content = await image.read()
         tmp_path = self._image_service.store_tmp_image(content)
 
         async def run_one(model: ModelInfo) -> ModelResult:
             try:
                 logger.debug("Running extraction for model: %s", model.id)
-                receipt = await self._provider.analyse_receipt_from_model(model.id, tmp_path)
+                receipt = await self._provider.analyse_receipt_from_model(
+                    model.id, tmp_path, tags=tags
+                )
                 return ModelResult(model_id=model.id, receipt=receipt)
             except ValueError as e:
                 logger.warning("Model %s failed with expected warning: %s", model.id, e)

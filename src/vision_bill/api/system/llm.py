@@ -1,11 +1,12 @@
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from ...config import settings
 from ...provider.factory import get_llm_provider
+from ...security.dependencies import get_current_user
 
-router = APIRouter(tags=["LLM", "AI", "Model Evaluation"])
+router = APIRouter(tags=["LLM", "AI", "Model Evaluation"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/models")

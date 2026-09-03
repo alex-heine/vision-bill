@@ -76,7 +76,7 @@ Pydantic settings loaded from `.env` and `.env.local` with nested delimiter `__`
 FastAPI `lifespan` creates the LLM provider and `ReceiptService`, initialises the DB pool (failure is logged, app continues without DB), and exposes services on `app.state`. A static frontend is mounted last at `/` from `src/vision_bill/static` so it never shadows `/api` routes.
 
 ## Database & Migrations
-- PostgreSQL; schema owned by Alembic. Migrations are hand-written raw SQL in `alembic/versions/` (no autogenerate). Current: `0001_initial_schema.py`, `dcd2dd9d789c` (adds `confidence` + `verified` to receipts).
+- PostgreSQL; schema owned by Alembic. Migrations are hand-written raw SQL in `alembic/versions/` (no autogenerate). The complete initial schema lives in `0001_initial_schema.py`.
 - Receipts carry a workflow: `status` (`unverified` → `verified`) plus `confidence` and `verified` columns; the image lives in tmp storage until `verify` moves it to permanent storage.
 - Before starting the app: `uv run alembic upgrade head` (safe on existing DBs — migration 0001 uses `IF NOT EXISTS`).
 - New migration: `uv run alembic revision -m "message"`, then edit `alembic/versions/<rev>_<message>.py` with explicit SQL.

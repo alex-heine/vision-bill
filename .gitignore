@@ -1,6 +1,6 @@
-# Personal test data
-uploads/
-uploads_tmp/
+server_data/logs/*
+server_data/uploads/*
+server_data/uploads_tmp/*
 tests/data
 docs/
 .opencode/
@@ -9,6 +9,7 @@ docs/
 __pycache__/
 *.py[codz]
 *$py.class
+.vscode/
 
 # C extensions
 *.so
@@ -223,3 +224,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Frontend (SvelteKit)
+frontend/node_modules/
+frontend/out/
+frontend/.svelte-kit/
+# The global `lib/` above would hide frontend/src/lib/ — un-ignore it
+!frontend/src/lib/
+
+# Built SPA installed into the package via `make fe-build`
+src/vision_bill/static/*
+!src/vision_bill/static/.gitkeep
