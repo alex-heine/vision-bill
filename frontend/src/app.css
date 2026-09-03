@@ -1,0 +1,162 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+	--vb-primary: #6750a4;
+	--vb-on-primary: #ffffff;
+	--vb-primary-container: #eaddff;
+	--vb-on-primary-container: #21005d;
+	--vb-secondary: #625b71;
+	--vb-on-secondary: #ffffff;
+	--vb-secondary-container: #e8def8;
+	--vb-on-secondary-container: #1d192b;
+	--vb-tertiary: #7d5260;
+	--vb-on-tertiary: #ffffff;
+	--vb-tertiary-container: #ffd8e4;
+	--vb-on-tertiary-container: #31111d;
+	--vb-surface: #fef7ff;
+	--vb-on-surface: #1d1b20;
+	--vb-surface-dim: #ded8e1;
+	--vb-surface-bright: #fef7ff;
+	--vb-surface-container-lowest: #ffffff;
+	--vb-surface-container-low: #f7f2fa;
+	--vb-surface-container: #f3edf7;
+	--vb-surface-container-high: #ece6f0;
+	--vb-surface-container-highest: #e6e0e9;
+	--vb-on-surface-variant: #49454f;
+	--vb-outline: #79747e;
+	--vb-outline-variant: #cac4d0;
+	--vb-inverse-surface: #322f35;
+	--vb-inverse-on-surface: #f5eff7;
+	--vb-inverse-primary: #d0bcff;
+	--vb-error: #b3261e;
+	--vb-on-error: #ffffff;
+	--vb-error-container: #f9dedc;
+	--vb-on-error-container: #410e0b;
+	--vb-success: #1b5e20;
+	--vb-on-success: #ffffff;
+	--vb-success-container: #c4edc8;
+	--vb-on-success-container: #002106;
+	--vb-warning: #7c5800;
+	--vb-on-warning: #ffffff;
+	--vb-warning-container: #ffe082;
+	--vb-on-warning-container: #241a00;
+	--vb-shadow-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+	--vb-shadow-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+	--vb-shadow-elevation-3: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+	--vb-shadow-elevation-4: 0 2px 3px rgba(0, 0, 0, 0.3), 0 6px 10px 4px rgba(0, 0, 0, 0.15);
+	--vb-shadow-elevation-5: 0 4px 4px rgba(0, 0, 0, 0.3), 0 8px 12px 6px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='dark'] {
+	--vb-primary: #d0bcff;
+	--vb-on-primary: #381e72;
+	--vb-primary-container: #4f378b;
+	--vb-on-primary-container: #eaddff;
+	--vb-secondary: #ccc2dc;
+	--vb-on-secondary: #332d41;
+	--vb-secondary-container: #4a4458;
+	--vb-on-secondary-container: #e8def8;
+	--vb-tertiary: #efb8c8;
+	--vb-on-tertiary: #492532;
+	--vb-tertiary-container: #633b48;
+	--vb-on-tertiary-container: #ffd8e4;
+	--vb-surface: #141218;
+	--vb-on-surface: #e6e0e9;
+	--vb-surface-dim: #141218;
+	--vb-surface-bright: #3b383e;
+	--vb-surface-container-lowest: #0f0d13;
+	--vb-surface-container-low: #1d1b20;
+	--vb-surface-container: #211f26;
+	--vb-surface-container-high: #2b2930;
+	--vb-surface-container-highest: #36343b;
+	--vb-on-surface-variant: #cac4d0;
+	--vb-outline: #938f99;
+	--vb-outline-variant: #49454f;
+	--vb-inverse-surface: #e6e0e9;
+	--vb-inverse-on-surface: #322f35;
+	--vb-inverse-primary: #6750a4;
+	--vb-error: #f2b8b5;
+	--vb-on-error: #601410;
+	--vb-error-container: #8c1d18;
+	--vb-on-error-container: #f9dedc;
+	--vb-success: #7ddc85;
+	--vb-on-success: #00390a;
+	--vb-success-container: #14471a;
+	--vb-on-success-container: #c4edc8;
+	--vb-warning: #f2c46d;
+	--vb-on-warning: #241a00;
+	--vb-warning-container: #5c4400;
+	--vb-on-warning-container: #ffe082;
+	--vb-shadow-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.6), 0 1px 3px 1px rgba(0, 0, 0, 0.4);
+	--vb-shadow-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.6), 0 2px 6px 2px rgba(0, 0, 0, 0.4);
+	--vb-shadow-elevation-3: 0 1px 3px rgba(0, 0, 0, 0.6), 0 4px 8px 3px rgba(0, 0, 0, 0.4);
+	--vb-shadow-elevation-4: 0 2px 3px rgba(0, 0, 0, 0.6), 0 6px 10px 4px rgba(0, 0, 0, 0.4);
+	--vb-shadow-elevation-5: 0 4px 4px rgba(0, 0, 0, 0.6), 0 8px 12px 6px rgba(0, 0, 0, 0.4);
+}
+
+@theme inline {
+	--color-primary: var(--vb-primary);
+	--color-on-primary: var(--vb-on-primary);
+	--color-primary-container: var(--vb-primary-container);
+	--color-on-primary-container: var(--vb-on-primary-container);
+	--color-secondary: var(--vb-secondary);
+	--color-on-secondary: var(--vb-on-secondary);
+	--color-secondary-container: var(--vb-secondary-container);
+	--color-on-secondary-container: var(--vb-on-secondary-container);
+	--color-tertiary: var(--vb-tertiary);
+	--color-on-tertiary: var(--vb-on-tertiary);
+	--color-tertiary-container: var(--vb-tertiary-container);
+	--color-on-tertiary-container: var(--vb-on-tertiary-container);
+	--color-surface: var(--vb-surface);
+	--color-on-surface: var(--vb-on-surface);
+	--color-surface-dim: var(--vb-surface-dim);
+	--color-surface-bright: var(--vb-surface-bright);
+	--color-surface-container-lowest: var(--vb-surface-container-lowest);
+	--color-surface-container-low: var(--vb-surface-container-low);
+	--color-surface-container: var(--vb-surface-container);
+	--color-surface-container-high: var(--vb-surface-container-high);
+	--color-surface-container-highest: var(--vb-surface-container-highest);
+	--color-on-surface-variant: var(--vb-on-surface-variant);
+	--color-outline: var(--vb-outline);
+	--color-outline-variant: var(--vb-outline-variant);
+	--color-inverse-surface: var(--vb-inverse-surface);
+	--color-inverse-on-surface: var(--vb-inverse-on-surface);
+	--color-inverse-primary: var(--vb-inverse-primary);
+	--color-error: var(--vb-error);
+	--color-on-error: var(--vb-on-error);
+	--color-error-container: var(--vb-error-container);
+	--color-on-error-container: var(--vb-on-error-container);
+	--color-success: var(--vb-success);
+	--color-on-success: var(--vb-on-success);
+	--color-success-container: var(--vb-success-container);
+	--color-on-success-container: var(--vb-on-success-container);
+	--color-warning: var(--vb-warning);
+	--color-on-warning: var(--vb-on-warning);
+	--color-warning-container: var(--vb-warning-container);
+	--color-on-warning-container: var(--vb-on-warning-container);
+	--shadow-elevation-1: var(--vb-shadow-elevation-1);
+	--shadow-elevation-2: var(--vb-shadow-elevation-2);
+	--shadow-elevation-3: var(--vb-shadow-elevation-3);
+	--shadow-elevation-4: var(--vb-shadow-elevation-4);
+	--shadow-elevation-5: var(--vb-shadow-elevation-5);
+}
+
+@layer base {
+	html {
+		font-family:
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			'Helvetica Neue',
+			Arial,
+			sans-serif;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	body {
+		@apply bg-surface text-on-surface;
+	}
+}

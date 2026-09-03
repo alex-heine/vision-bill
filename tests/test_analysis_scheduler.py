@@ -42,8 +42,10 @@ def _receipt_row(receipt_id: int = 7) -> ReceiptRow:
     )
 
 
-def _pending_image(image_id: int, image_path: Path) -> ImageRow:
-    return ImageRow(id=image_id, image_path=str(image_path), status="pending")
+def _pending_image(image_id: int, image_path: Path, bypass_review: bool = False) -> ImageRow:
+    return ImageRow(
+        id=image_id, image_path=str(image_path), status="pending", bypass_review=bypass_review
+    )
 
 
 @pytest.fixture
@@ -66,8 +68,12 @@ def scheduler_context(settings: Settings) -> Generator[SchedulerContext, None, N
     image_db.list_pending_images = AsyncMock(return_value=[])
     image_db.mark_analyzed = AsyncMock()
     image_db.mark_failed = AsyncMock()
+    image_db.update_image_path = AsyncMock()
 
-    scheduler = AnalysisScheduler(settings, provider, receipt_service, image_db)
+    image_service = MagicMock()
+    image_service.store_perm_image = MagicMock(return_value=None)
+
+    scheduler = AnalysisScheduler(settings, provider, receipt_service, image_db, image_service)
     yield scheduler, provider, receipt_service, image_db
 
 
@@ -118,10 +124,37 @@ async def test_success_analyzes_and_links(
     # The configured model is unavailable, so the first available one is used.
     receipt_service.analyse_receipt_from_path.assert_awaited_once_with("test-model", image_file)
     receipt_service.persist_receipt.assert_awaited_once_with(
-        receipt, image_id=11, status="unverified"
+        receipt, image_id=11, status="unverified", verified=False
     )
     image_db.mark_analyzed.assert_awaited_once_with(11, 7)
     image_db.mark_failed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bypass_review_auto_verifies(
+    scheduler_context: SchedulerContext, tmp_path: Path
+) -> None:
+    """A bypass-reviewed image is persisted as verified and moved to permanent storage."""
+    scheduler, _, receipt_service, image_db = scheduler_context
+    image_file = tmp_path / "bypass.png"
+    image_file.write_bytes(b"image-bytes")
+    perm_file = tmp_path / "receipt_7.png"
+    scheduler._image_service.store_perm_image = MagicMock(return_value=perm_file)
+    image_db.list_pending_images = AsyncMock(
+        return_value=[_pending_image(11, image_file, bypass_review=True)]
+    )
+    receipt = _make_receipt()
+    receipt_service.analyse_receipt_from_path = AsyncMock(return_value=receipt)
+
+    result = await scheduler.process_pending()
+
+    assert result == [PendingImageResult(image_id=11, status="analyzed", receipt_id=7)]
+    receipt_service.persist_receipt.assert_awaited_once_with(
+        receipt, image_id=11, status="verified", verified=True
+    )
+    image_db.mark_analyzed.assert_awaited_once_with(11, 7)
+    scheduler._image_service.store_perm_image.assert_called_once_with(image_file, 7)
+    image_db.update_image_path.assert_awaited_once_with(11, str(perm_file))
 
 
 @pytest.mark.asyncio

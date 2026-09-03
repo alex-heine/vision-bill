@@ -1,0 +1,9 @@
+.svelte-kit
+build
+out
+dist
+node_modules
+package.json
+playwright-report
+test-results
+*.log

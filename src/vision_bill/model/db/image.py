@@ -19,5 +19,6 @@ class ImageRow(BaseModel):
     status: str = "pending"
     error: str | None = None
     receipt_id: int | None = None
+    bypass_review: bool = False
     created_at: datetime | None = None
     analyzed_at: datetime | None = None

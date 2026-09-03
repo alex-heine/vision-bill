@@ -14,9 +14,12 @@ from vision_bill.config import Settings
 from vision_bill.model.receipt import LineItem, Receipt, TaxLine
 from vision_bill.provider.db.receipt_db import (
     DELETE_LINE_ITEMS_SQL,
+    DELETE_RECEIPT_SQL,
     DELETE_TAXES_SQL,
     INSERT_LINE_ITEM_SQL,
+    INSERT_TAG_SQL,
     INSERT_TAX_SQL,
+    LIST_TAGS_SQL,
     ReceiptDB,
 )
 
@@ -49,6 +52,7 @@ def _receipt_row(
         "date": Date(2024, 1, 15),
         "time": Time(14, 30),
         "currency": "USD",
+        "category": "other",
         "subtotal": Decimal("50.00"),
         "discount_total": Decimal("0.00"),
         "tax_total": Decimal("4.50"),
@@ -73,6 +77,7 @@ def _line_item_row(receipt_id: int = 1) -> dict[str, Any]:
         "unit_price": Decimal("10.00"),
         "total_price": Decimal("20.00"),
         "category": "other",
+        "tags": ["test"],
     }
 
 
@@ -95,12 +100,15 @@ def _make_receipt(merchant_name: str = "Test Store") -> Receipt:
         date=Date(2024, 1, 15),
         time="14:30",
         currency="USD",
+        category="grocery",
         line_items=[
             LineItem(
                 description="Item A",
                 quantity=2,
                 unit_price=Decimal("10.00"),
                 total_price=Decimal("20.00"),
+                category="grocery",
+                tags=["test"],
             )
         ],
         taxes=[TaxLine(name="VAT", rate=0.19, amount=Decimal("4.50"))],
@@ -205,7 +213,7 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     """persist_receipt should insert receipt + line items + taxes."""
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_id=3))
+    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_id=3, category="grocery"))
     mock_conn.execute = AsyncMock()
 
     receipt = _make_receipt()
@@ -216,6 +224,7 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     assert result.confidence == 95
     assert result.merchant_name == "Test Store"
     assert result.status == "unverified"
+    assert result.category == "grocery"
     assert result.verified is False
     assert result.image_id == 3
     assert result.time == "14:30:00"
@@ -229,9 +238,12 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     bound_time = fetchrow_call.args[6]
     assert isinstance(bound_time, Time)
     assert bound_time == Time(14, 30)
-    # status and image_id are the last two bound parameters
-    assert fetchrow_call.args[14] == "unverified"
-    assert fetchrow_call.args[15] == 3
+    # category is the 8th bound parameter
+    assert fetchrow_call.args[8] == "grocery"
+    # status, image_id and verified are the last three bound parameters
+    assert fetchrow_call.args[15] == "unverified"
+    assert fetchrow_call.args[16] == 3
+    assert fetchrow_call.args[17] is False
 
     assert mock_conn.fetchrow.call_count == 1
     # One execute each for the line item and the tax
@@ -317,6 +329,8 @@ async def test_get_receipt_with_details(db: ReceiptDB) -> None:
     assert len(details.line_items) == 1
     assert details.line_items[0].description == "Item A"
     assert details.line_items[0].quantity == 2.0
+    assert details.line_items[0].category == "other"
+    assert details.line_items[0].tags == ["test"]
     assert len(details.taxes) == 1
     assert details.taxes[0].rate == 0.19
 
@@ -403,3 +417,88 @@ async def test_verify_receipt_not_found(db: ReceiptDB) -> None:
     result = await db.verify_receipt(999)
 
     assert result is None
+
+
+# ── Delete ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_delete_receipt(db: ReceiptDB) -> None:
+    """delete_receipt should DELETE ... RETURNING and map the removed row."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetchrow = AsyncMock(
+        return_value=_receipt_row(receipt_id=7, image_id=9, merchant_name="Doomed Store")
+    )
+
+    result = await db.delete_receipt(7)
+
+    assert result is not None
+    assert result.id == 7
+    assert result.image_id == 9
+
+    fetchrow_call = mock_conn.fetchrow.call_args
+    assert fetchrow_call is not None
+    assert fetchrow_call.args[0] == DELETE_RECEIPT_SQL
+    assert fetchrow_call.args[1] == 7
+
+
+@pytest.mark.asyncio
+async def test_delete_receipt_not_found(db: ReceiptDB) -> None:
+    """delete_receipt should return None when no receipt row matched."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+
+    result = await db.delete_receipt(999)
+
+    assert result is None
+
+
+# ── Tags (vocabulary) ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_tags(db: ReceiptDB) -> None:
+    """list_tags maps the name column and preserves the DB ordering."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetch = AsyncMock(return_value=[{"name": "coffee"}, {"name": "food"}])
+
+    result = await db.list_tags()
+
+    assert result == ["coffee", "food"]
+    fetch_call = mock_conn.fetch.await_args
+    assert fetch_call is not None
+    assert fetch_call.args[0] == LIST_TAGS_SQL
+
+
+@pytest.mark.asyncio
+async def test_create_tag_new(db: ReceiptDB) -> None:
+    """create_tag inserts the name and reports a fresh creation."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetchrow = AsyncMock(return_value={"name": "coffee"})
+
+    created = await db.create_tag("coffee")
+
+    assert created is True
+    fetchrow_call = mock_conn.fetchrow.await_args
+    assert fetchrow_call is not None
+    assert fetchrow_call.args[0] == INSERT_TAG_SQL
+    assert fetchrow_call.args[1] == "coffee"
+
+
+@pytest.mark.asyncio
+async def test_create_tag_existing_is_not_an_error(db: ReceiptDB) -> None:
+    """ON CONFLICT DO NOTHING returns no row for a known tag -> False, no raise."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+
+    created = await db.create_tag("coffee")
+
+    assert created is False
+    # The insert must be conflict-safe, not a plain INSERT.
+    insert_sql = mock_conn.fetchrow.await_args.args[0]
+    assert "ON CONFLICT (name) DO NOTHING" in insert_sql

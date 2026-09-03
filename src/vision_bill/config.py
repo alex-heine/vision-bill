@@ -26,6 +26,7 @@ class ApiSettings(BaseModel):
 class ImageSettings(BaseModel):
     save_dir: str = "/app/uploads/"
     tmp_dir: str = "/app/uploads_tmp/"
+    bypass_review_default: bool = False
 
 
 class WorkerSettings(BaseModel):
@@ -60,6 +61,25 @@ class PGSettings(BaseModel):
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
 
 
+class AuthSettings(BaseModel):
+    """Multi-user authentication settings.
+
+    ``secret_key`` is required and signs the stateless session cookie. The
+    optional ``pepper`` salts passwords before hashing; when unset the
+    ``secret_key`` is used as the pepper, so a pepper is always in play.
+    """
+
+    secret_key: str
+    session_cookie_name: str = "vb_session"
+    session_max_age_seconds: int = 1_209_600  # 14 days
+    session_secure: bool = False
+    bootstrap_username: str | None = None
+    bootstrap_password: str | None = None
+    allow_registration: bool = True
+    admin_can_see_all: bool = False
+    pepper: str | None = None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(".env", ".env.local"),
@@ -72,6 +92,7 @@ class Settings(BaseSettings):
     llm: LLMSettings
     pg: PGSettings
     worker: WorkerSettings = WorkerSettings()
+    auth: AuthSettings
 
 
 # Required fields (llm, pg) are populated from .env / environment variables

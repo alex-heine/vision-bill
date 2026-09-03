@@ -2,9 +2,11 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
+from ..config import settings
 from ..model.db.image import ImageRow
+from ..security.dependencies import get_current_user
 from ..service.analysis_scheduler import AnalysisScheduler
 from ..service.image_service import ImageService, UnsupportedImageTypeError
 from ..service.receipt_service import ReceiptService
@@ -12,7 +14,7 @@ from .helper.helper import get_analysis_scheduler, get_image_service, get_receip
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 PENDING_QUEUE_WARNING = "LLM provider not available – image queued for background analysis"
 
@@ -26,6 +28,7 @@ def _location(image_id: int) -> str:
 async def upload_image(
     receipt: UploadFile = File(...),  # noqa: B008
     model_id: str | None = None,
+    bypass_review: bool | None = Query(None),
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     image_service: ImageService = Depends(get_image_service),  # noqa: B008
 ) -> JSONResponse:
@@ -41,6 +44,10 @@ async def upload_image(
     """
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
+
+    effective_bypass_review = (
+        settings.images.bypass_review_default if bypass_review is None else bypass_review
+    )
 
     content = await receipt.read()
 
@@ -67,6 +74,7 @@ async def upload_image(
         media_type=info.media_type,
         size_bytes=info.size_bytes,
         status="pending",
+        bypass_review=effective_bypass_review,
     )
 
     if not provider_available:
@@ -83,10 +91,25 @@ async def upload_image(
     available_ids = {m.id for m in models}
     chosen_model = model_id if (model_id and model_id in available_ids) else models[0].id
     llm_response = await receipt_service.analyse_receipt_from_path(chosen_model, tmp_path)
-    row = await receipt_service.persist_receipt(
-        llm_response, image_id=image_row.id, status="unverified"
-    )
-    await receipt_service.mark_image_analyzed(image_row.id, row.id)
+
+    if effective_bypass_review:
+        row = await receipt_service.persist_receipt(
+            llm_response, image_id=image_row.id, status="verified", verified=True
+        )
+        await receipt_service.mark_image_analyzed(image_row.id, row.id)
+        try:
+            perm_path = image_service.store_perm_image(tmp_path, row.id)
+            if perm_path is not None:
+                await receipt_service.update_image_path(image_row.id, str(perm_path))
+        except Exception:
+            logger.exception(
+                "Failed to move bypass-reviewed image %d to permanent storage", image_row.id
+            )
+    else:
+        row = await receipt_service.persist_receipt(
+            llm_response, image_id=image_row.id, status="unverified"
+        )
+        await receipt_service.mark_image_analyzed(image_row.id, row.id)
 
     return JSONResponse(
         status_code=201,
@@ -144,6 +167,23 @@ async def get_image(
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
     return image
+
+
+@router.get("/{image_id}/file")
+async def get_image_file(
+    image_id: int,
+    receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+) -> FileResponse:
+    """Stream the stored image file behind an image resource."""
+    if not receipt_service.db_ready:
+        raise HTTPException(status_code=503, detail="Database not available")
+    image = await receipt_service.get_image_by_id(image_id)
+    if image is None or not image.image_path:
+        raise HTTPException(status_code=404, detail="Image file not found")
+    path = Path(image.image_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image file not found")
+    return FileResponse(path, media_type=image.media_type or "application/octet-stream")
 
 
 @router.delete("/{image_id}")

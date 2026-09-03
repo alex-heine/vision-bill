@@ -17,9 +17,8 @@ services:
         condition: service_healthy
     volumes:
       - ./src/vision_bill:/app/src/vision_bill
-      - ./logs:/app/logs
-      - ./uploads:/app/uploads
-      - ./uploads_tmp:/app/uploads_tmp
+      - ./server_data/logs:/app/logs
+      - ./server_data/uploads:/app/uploads
     command:
       - sh
       - -c

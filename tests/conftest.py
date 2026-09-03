@@ -1,9 +1,18 @@
+import os
 from pathlib import Path
 
 import pytest
 
-from vision_bill.config import (
+# Test-only default for the required auth secret. ``vision_bill.config`` builds
+# a module-level ``settings`` on import, which needs ``AUTH__SECRET_KEY``; this
+# keeps the test suite independent of an operator's ``.env``. A value already
+# present in the environment (or ``.env``) wins because this uses setdefault.
+TEST_AUTH_SECRET = "test-secret-key-do-not-use-in-prod"
+os.environ.setdefault("AUTH__SECRET_KEY", TEST_AUTH_SECRET)
+
+from vision_bill.config import (  # noqa: E402
     ApiSettings,
+    AuthSettings,
     ImageSettings,
     LLMProviderEnum,
     LLMSettings,
@@ -38,4 +47,5 @@ def settings(tmp_path: Path) -> Settings:
             host="localhost",
             port=5432,
         ),
+        auth=AuthSettings(secret_key=TEST_AUTH_SECRET),
     )

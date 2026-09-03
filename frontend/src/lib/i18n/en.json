@@ -1,0 +1,218 @@
+{
+	"app": {
+		"name": "Vision Bill"
+	},
+	"nav": {
+		"dashboard": "Dashboard",
+		"statistics": "Statistics",
+		"upload": "Upload",
+		"queue": "Queue",
+		"receipts": "Receipts",
+		"benchmarks": "Benchmarks",
+		"settings": "Settings"
+	},
+	"theme": {
+		"light": "Light",
+		"dark": "Dark",
+		"toggle": "Toggle theme"
+	},
+	"language": {
+		"label": "Language"
+	},
+	"common": {
+		"close": "Close",
+		"save": "Save",
+		"cancel": "Cancel",
+		"confirm": "Confirm",
+		"delete": "Delete",
+		"remove": "Remove",
+		"loading": "Loading…",
+		"retry": "Try again",
+		"finish": "Finish",
+		"error": "Something went wrong.",
+		"back": "Back"
+	},
+	"time": {
+		"justNow": "just now",
+		"minutesAgo": "{count} min ago",
+		"hoursAgo": "{count} h ago",
+		"daysAgo": "{count} d ago"
+	},
+	"categories": {
+		"grocery": "Grocery",
+		"electronics": "Electronics",
+		"clothing": "Clothing",
+		"restaurant": "Restaurant",
+		"fuel": "Fuel",
+		"pharmacy": "Pharmacy",
+		"entertainment": "Entertainment",
+		"other": "Other"
+	},
+	"payment": {
+		"cash": "Cash",
+		"credit_card": "Credit card",
+		"debit_card": "Debit card",
+		"mobile_payment": "Mobile payment",
+		"check": "Check",
+		"other": "Other",
+		"unknown": "Unknown"
+	},
+	"upload": {
+		"title": "Upload receipt",
+		"chooseFile": "Choose from gallery",
+		"takePhoto": "Take photo",
+		"dropHint": "or drop an image here",
+		"supportedTypes": "JPG, PNG, WebP, AVIF or HEIC",
+		"bypassLabel": "Skip review – save directly as verified",
+		"bypassHint": "The receipt is stored as verified without a manual review step.",
+		"upload": "Upload",
+		"uploading": "Uploading {file}…",
+		"queuedTitle": "Added to the analysis queue",
+		"queuedBody": "No vision model is reachable right now. The background worker will analyse the image shortly.",
+		"openQueue": "Open queue",
+		"reviewTitle": "Review extracted data",
+		"errorUnsupported": "Unsupported image type",
+		"errorDb": "Database not available",
+		"errorGeneric": "Upload failed"
+	},
+	"queue": {
+		"title": "Analysis queue",
+		"emptyTitle": "The queue is empty",
+		"emptyBody": "Pending and failed images will appear here.",
+		"analyzeNow": "Analyze now",
+		"analyzing": "Analyzing…",
+		"analyzed": "{count} image(s) processed",
+		"analyzeFailed": "Analysis run failed",
+		"pending": "Pending",
+		"failed": "Failed",
+		"deleteTitle": "Delete image?",
+		"deleteBody": "“{file}” will be removed from the queue and disk.",
+		"deleted": "Image deleted",
+		"deleteConflict": "This image can no longer be deleted.",
+		"deleteFailed": "Deleting failed",
+		"loadError": "Could not load the queue."
+	},
+	"receipt": {
+		"verified": "Verified",
+		"unverified": "Unverified",
+		"verify": "Verify",
+		"verifyTitle": "Verify receipt?",
+		"verifyBody": "The receipt is marked as verified and its image is moved to permanent storage.",
+		"verifySuccess": "Receipt verified",
+		"verifyConflict": "The receipt is already verified.",
+		"verifyFailed": "Verifying failed",
+		"saved": "Changes saved",
+		"saveFailed": "Saving failed",
+		"unsaved": "Unsaved changes",
+		"notFoundTitle": "Receipt not found",
+		"notFoundBody": "This receipt does not exist or was deleted.",
+		"imageUnavailable": "Image unavailable",
+		"deleteTitle": "Delete receipt?",
+		"deleteBody": "“{merchant}” will be deleted along with its image.",
+		"deleted": "Receipt deleted",
+		"deleteFailed": "Deleting failed",
+		"deleteBlocked": "This receipt is used in a benchmark run and can't be deleted."
+	},
+	"receipts": {
+		"searchPlaceholder": "Search receipts…",
+		"filter": "Filter by status",
+		"filterAll": "All statuses",
+		"empty": "No receipts yet.",
+		"noResults": "No receipts match your search.",
+		"unknownVendor": "Unknown merchant"
+	},
+	"dashboard": {
+		"verifiedOnly": "Verified receipts only",
+		"openStatistics": "Open statistics",
+		"loadError": "Could not load the dashboard.",
+		"emptyTitle": "No verified receipts yet",
+		"emptyBody": "Verify a receipt to see it in your dashboard and statistics.",
+		"verifiedReceipts": "Verified receipts",
+		"thisMonth": "This month",
+		"topCategories": "Top categories"
+	},
+	"statistics": {
+		"emptyTitle": "No statistics yet",
+		"emptyBody": "Statistics appear after you verify receipts.",
+		"receiptCount": "Verified receipts",
+		"totalSpend": "Total spend",
+		"byCategory": "Spend by category"
+	},
+	"editor": {
+		"details": "Details",
+		"merchant": "Merchant",
+		"address": "Address",
+		"number": "Receipt number",
+		"date": "Date",
+		"time": "Time",
+		"currency": "Currency",
+		"category": "Category",
+		"paymentMethod": "Payment method",
+		"confidence": "Confidence (%)",
+		"amounts": "Amounts",
+		"subtotal": "Subtotal",
+		"discount": "Discount",
+		"taxTotal": "Tax total",
+		"tip": "Tip",
+		"total": "Total",
+		"expectedTotal": "Expected total (subtotal − discount + tax + tip)",
+		"totalMismatch": "Does not match the entered total by {diff}.",
+		"lineItems": "Line items",
+		"noLineItems": "No line items yet.",
+		"addItem": "Add item",
+		"description": "Description",
+		"quantity": "Qty",
+		"unitPrice": "Unit price",
+		"totalPrice": "Total",
+		"tagsSelect": "Standard tags",
+		"tagsSuggested": "Suggested tags",
+		"tagsSuggestedBadge": "Suggested",
+		"tagsKeep": "Keep as standard tag",
+		"tagsRemove": "Remove tag",
+		"tagsAdd": "Add tag",
+		"tagsAddPlaceholder": "Type a new tag…",
+		"tagsAddButton": "Add",
+		"tagsExisting": "existing",
+		"tagsExistsHint": "“{tag}” is already a standard tag",
+		"tagsNewHint": "Will be added as a new tag",
+		"tagsCreateFailed": "Could not add the tag",
+		"taxes": "Taxes",
+		"noTaxes": "No taxes.",
+		"addTax": "Add tax",
+		"taxName": "Name",
+		"taxRate": "Rate (0–1)",
+		"amount": "Amount",
+		"saveAndVerify": "Save & verify",
+		"merchantRequired": "Merchant is required.",
+		"dateRequired": "A valid date is required.",
+		"invalidAmount": "Amount must be a non-negative number.",
+		"invalidQuantity": "Quantity must be greater than zero.",
+		"invalidRate": "Rate must be a number between 0 and 1.",
+		"invalidConfidence": "Confidence must be a whole number between 0 and 100."
+	},
+	"pages": {
+		"dashboard": {
+			"title": "Dashboard"
+		},
+		"statistics": {
+			"title": "Statistics"
+		},
+		"upload": {
+			"title": "Upload receipt"
+		},
+		"queue": {
+			"title": "Analysis queue"
+		},
+		"receipts": {
+			"title": "Receipts",
+			"placeholder": "Your saved receipts will appear here."
+		},
+		"receiptDetail": {
+			"title": "Receipt {id}"
+		},
+		"settings": {
+			"title": "Settings",
+			"placeholder": "Application settings will appear here."
+		}
+	}
+}

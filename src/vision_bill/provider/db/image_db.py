@@ -7,12 +7,12 @@ import asyncpg
 from ...config import PGSettings
 from ...model.db.image import ImageRow
 
-# ── SQL (DML; DDL lives in alembic/versions/0002_images_table.py) ──
+# ── SQL (DML; DDL lives in alembic/versions/0001_initial_schema.py) ──
 
 INSERT_IMAGE_SQL = """
     INSERT INTO images
-        (original_filename, media_type, size_bytes, image_path, status)
-    VALUES ($1, $2, $3, $4, $5)
+        (original_filename, media_type, size_bytes, image_path, status, bypass_review)
+    VALUES ($1, $2, $3, $4, $5, $6)
     RETURNING *
 """
 
@@ -111,6 +111,7 @@ class ImageDB:
         media_type: str | None = None,
         size_bytes: int | None = None,
         status: str = "pending",
+        bypass_review: bool = False,
     ) -> ImageRow:
         """Insert a new images row (default status ``pending``) and return it."""
         logger.info("Storing image row for %s (status=%s)", image_path, status)
@@ -122,6 +123,7 @@ class ImageDB:
                 size_bytes,
                 image_path,
                 status,
+                bypass_review,
             )
         return self._image_row_from_record(row)
 

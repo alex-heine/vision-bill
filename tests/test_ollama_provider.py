@@ -1,7 +1,8 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
-from vision_bill.model.receipt import Receipt
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from vision_bill.provider.llm.ollama import OllamaProvider
 
 
@@ -123,9 +124,11 @@ async def test_analyse_receipt_from_model_failure_no_vision(mock_client):
     provider = OllamaProvider(host="http://localhost:11434")
     mock_client.chat.return_value = MagicMock(message=MagicMock(content="I cannot process images."))
 
-    with patch("vision_bill.provider.llm.ollama.Path.exists", return_value=True):
-        with pytest.raises(ValueError, match=r".*Failed to get a valid response.*"):
-            await provider.analyse_receipt_from_model("gemma4:vision", Path("fake.png"))
+    with (
+        patch("vision_bill.provider.llm.ollama.Path.exists", return_value=True),
+        pytest.raises(ValueError, match=r".*Failed to get a valid response.*"),
+    ):
+        await provider.analyse_receipt_from_model("gemma4:vision", Path("fake.png"))
 
 
 @pytest.mark.asyncio
@@ -183,3 +186,22 @@ async def test_check_connection_unexpected_error_propagates(mock_client):
     with pytest.raises(RuntimeError, match="boom"):
         await provider.check_connection()
     mock_client.list.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_analyse_receipt_embeds_tag_vocabulary_in_prompt(mock_client):
+    """When a tag vocabulary is supplied it must appear in the prompt content."""
+    provider = OllamaProvider(host="http://localhost:11434")
+    content = '{"confidence": 95, "merchant_name": "Shop", "date": "2024-08-06", "line_items": [], "subtotal": 0.00, "total": 0.00}'
+    mock_client.chat.return_value = MagicMock(message=MagicMock(content=content))
+
+    with patch("vision_bill.provider.llm.ollama.Path.exists", return_value=True):
+        await provider.analyse_receipt_from_model(
+            "gemma4:vision", Path("fake.png"), tags=["coffee", "food"]
+        )
+
+    messages = mock_client.chat.call_args[1]["messages"]
+    user_prompt = messages[0]["content"]
+    assert "Prefer tags from this list: coffee, food" in user_prompt
+    # The merchant-name guidance (no guessing from logos) ships with the prompt.
+    assert "Do not guess or infer the company name from a logo" in user_prompt

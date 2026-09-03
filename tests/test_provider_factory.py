@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from vision_bill.config import LLMProviderEnum
-from vision_bill.provider.factory import get_llm_provider
 from vision_bill.provider.factory import get_llm_provider
 from vision_bill.provider.llm.ollama import OllamaProvider
 

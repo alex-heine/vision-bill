@@ -1,7 +1,7 @@
 from datetime import date as Date
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ReceiptRow(BaseModel):
@@ -15,6 +15,7 @@ class ReceiptRow(BaseModel):
     date: Date
     time: str | None = None
     currency: str = "USD"
+    category: str = "other"
     subtotal: Decimal
     discount_total: Decimal = Decimal(0)
     tax_total: Decimal = Decimal(0)
@@ -37,6 +38,7 @@ class LineItemRow(BaseModel):
     unit_price: Decimal
     total_price: Decimal
     category: str = "other"
+    tags: list[str] = Field(default_factory=list)
 
 
 class TaxLineRow(BaseModel):
