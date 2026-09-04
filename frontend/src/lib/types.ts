@@ -241,3 +241,27 @@ export interface ImageListFilters {
 	limit?: number;
 	offset?: number;
 }
+
+/** One verified line-item purchase matching a product search. */
+export interface ProductPurchase {
+	receipt_id: string;
+	description: string;
+	merchant_name: string;
+	/** ISO date, YYYY-MM-DD */
+	date: string;
+	/** HH:MM 24h */
+	time: string | null;
+	quantity: number;
+	unit_price: string;
+	currency: string;
+}
+
+/** Response of GET /search: purchase history + unit-price summary. */
+export interface ProductSearchResponse {
+	query: string;
+	purchases: ProductPurchase[];
+	latest_price: string | null;
+	cheapest_price: string | null;
+	average_price: string | null;
+	currency: string | null;
+}

@@ -5,6 +5,7 @@ export const queryKeys = {
 	image: (id: string) => ['images', id] as const,
 	receipts: (filters: ReceiptListFilters = {}) => ['receipts', filters] as const,
 	receipt: (id: string) => ['receipts', id] as const,
+	search: (term: string) => ['search', term] as const,
 	tags: () => ['tags'] as const,
 	uiConfig: () => ['system', 'ui-config'] as const,
 	statistics: (weeks = 12) => ['statistics', weeks] as const,
