@@ -5,6 +5,7 @@ Public by design — these are the only non-protected routes (plus
 """
 
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -34,7 +35,7 @@ def _require_user_db(user_db: UserDB) -> None:
         raise HTTPException(status_code=503, detail="Database is unavailable")
 
 
-def _set_session_cookie(response: Response, user_id: int) -> None:
+def _set_session_cookie(response: Response, user_id: UUID) -> None:
     """Set the signed session cookie (HttpOnly, SameSite=Lax)."""
     token = create_token(user_id, settings.auth.session_max_age_seconds, settings.auth.secret_key)
     response.set_cookie(
@@ -65,7 +66,7 @@ async def register(
         raise HTTPException(status_code=409, detail="Username is already taken")
     hashed = hash_password(body.password, settings.auth)
     user = await user_db.create_user(body.username, hashed, is_admin=False)
-    logger.info("Registered new user '%s' (id=%d)", user.username, user.id)
+    logger.info("Registered new user '%s' (id=%s)", user.username, user.id)
     _set_session_cookie(response, user.id)
     return user
 

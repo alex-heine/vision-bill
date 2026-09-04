@@ -12,7 +12,7 @@
 		average_latency_ms: number | null;
 		council_findings: number;
 	};
-	type Run = { id: number; status: string; model_ids: string[]; receipt_ids: number[] };
+	type Run = { id: string; status: string; model_ids: string[]; receipt_ids: string[] };
 	type Status = {
 		run: Run;
 		queued: number;
@@ -23,7 +23,7 @@
 		summaries: Summary[];
 	};
 	let runs = $state<Run[]>([]),
-		selectedId = $state<number | null>(null),
+		selectedId = $state<string | null>(null),
 		result = $state<Status | null>(null),
 		error = $state('');
 	const fmt = (value: number | null, digits = 2) => (value === null ? '—' : value.toFixed(digits));
@@ -74,7 +74,7 @@
 				class="mt-1 block w-full rounded-lg border border-outline-variant bg-surface p-2"
 				value={selectedId ?? ''}
 				onchange={(event) => {
-					selectedId = Number(event.currentTarget.value);
+					selectedId = event.currentTarget.value;
 					void refresh();
 				}}
 				>{#each runs as run (run.id)}<option value={run.id}>#{run.id} — {run.status}</option

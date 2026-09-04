@@ -4,6 +4,8 @@ Kept separate from the DB row models: this is the authenticated principal as
 seen by the API layer, not a raw table row.
 """
 
+from uuid import UUID
+
 from pydantic import BaseModel
 
 
@@ -15,7 +17,7 @@ class User(BaseModel):
     Handlers use it to decide whether to scope data queries to this user.
     """
 
-    id: int
+    id: UUID
     username: str
     is_admin: bool = False
     can_see_all: bool = False

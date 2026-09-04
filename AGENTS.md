@@ -41,6 +41,7 @@ FastAPI routers, all mounted under versioned prefixes in `main.py`:
     - `GET /`, `GET /{id}`, `PUT /{id}` — list, inspect, and update persisted receipts.
     - `POST /{id}/verify` — marks a receipt verified and moves its image from tmp to permanent storage.
     - All endpoints return `503` when the DB pool is unavailable.
+    - All entity IDs and path parameters are UUIDs; IDs are never sequential integers.
 - `api/system/llm.py` — mounted at `/api/v1/llm`: `GET /models` lists vision-capable models.
 - `api/system/main.py` — mounted at `/api/v1/system` (mostly stubbed).
 - `api/helper/helper.py` — FastAPI dependencies (`get_receipt_service`, `get_image_service`, `get_analysis_scheduler`) backed by `app.state`.
@@ -58,7 +59,7 @@ Abstraction over external dependencies:
     - **Self-Correction**: Retry loop (`RETRY_LIMIT = 3`) that appends the failed output + validation error back to the conversation so the model can emit corrected JSON.
 - `provider/factory.py` — `get_llm_provider(settings.llm)`. Only `OLLAMA` is implemented; the `LLMProviderEnum` also declares `ANTHROPIC`/`OPENAI` but they raise `ValueError` (and are out of scope — see Privacy constraint).
 - `provider/db/receipt_db.py` — `ReceiptDB`: asyncpg pool, raw SQL DML for receipts, line items, taxes (`persist_receipt`, `get_receipt_with_details`, `update_receipt`, `verify_receipt`, ...). DDL lives only in Alembic migrations.
-- `provider/db/image_db.py` — currently an empty placeholder (image persistence is handled by `ImageService` file storage, not the DB).
+- `provider/db/image_db.py` — persists image metadata and workflow state; image bytes remain in file storage managed by `ImageService`.
 
 ### 4. Model Layer (`model/`)
 - `model/receipt.py` — Pydantic `Receipt` schema (incl. `confidence` 0–100, line items, taxes, totals) used for LLM output enforcement.
@@ -76,7 +77,7 @@ Pydantic settings loaded from `.env` and `.env.local` with nested delimiter `__`
 FastAPI `lifespan` creates the LLM provider and `ReceiptService`, initialises the DB pool (failure is logged, app continues without DB), and exposes services on `app.state`. A static frontend is mounted last at `/` from `src/vision_bill/static` so it never shadows `/api` routes.
 
 ## Database & Migrations
-- PostgreSQL; schema owned by Alembic. Migrations are hand-written raw SQL in `alembic/versions/` (no autogenerate). The complete initial schema lives in `0001_initial_schema.py`.
+- PostgreSQL; schema owned by Alembic. Migrations are hand-written raw SQL in `alembic/versions/` (no autogenerate). The complete initial schema lives in `0001_initial_schema.py`; every entity primary and foreign key uses UUID.
 - Receipts carry a workflow: `status` (`unverified` → `verified`) plus `confidence` and `verified` columns; the image lives in tmp storage until `verify` moves it to permanent storage.
 - Before starting the app: `uv run alembic upgrade head` (safe on existing DBs — migration 0001 uses `IF NOT EXISTS`).
 - New migration: `uv run alembic revision -m "message"`, then edit `alembic/versions/<rev>_<message>.py` with explicit SQL.

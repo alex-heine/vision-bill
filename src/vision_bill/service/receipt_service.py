@@ -3,6 +3,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from uuid import UUID
 
 import asyncpg
 from fastapi import UploadFile
@@ -98,16 +99,21 @@ class ReceiptService:
     async def persist_receipt(
         self,
         receipt: Receipt,
-        image_id: int | None = None,
+        image_id: UUID | None = None,
         status: str = "unverified",
         verified: bool = False,
+        user_id: UUID | None = None,
     ) -> ReceiptRow:
         return await self._db.persist_receipt(
-            receipt, image_id=image_id, status=status, verified=verified
+            receipt, image_id=image_id, status=status, verified=verified, user_id=user_id
         )
 
-    async def get_receipt_by_id(self, receipt_id: int) -> ReceiptRow | None:
-        return await self._db.get_receipt_by_id(receipt_id)
+    async def get_receipt_by_id(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptRow | None:
+        return await self._db.get_receipt_by_id(
+            receipt_id, user_id=user_id, can_see_all=can_see_all
+        )
 
     async def list_receipts(
         self,
@@ -117,6 +123,8 @@ class ReceiptService:
         date_from: date | None = None,
         date_to: date | None = None,
         search: str | None = None,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
     ) -> list[ReceiptRow]:
         return await self._db.list_receipts(
             limit=limit,
@@ -125,21 +133,41 @@ class ReceiptService:
             date_from=date_from,
             date_to=date_to,
             search=search,
+            user_id=user_id,
+            can_see_all=can_see_all,
         )
 
-    async def get_receipt_with_details(self, receipt_id: int) -> ReceiptWithDetails | None:
-        return await self._db.get_receipt_with_details(receipt_id)
+    async def get_receipt_with_details(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptWithDetails | None:
+        return await self._db.get_receipt_with_details(
+            receipt_id, user_id=user_id, can_see_all=can_see_all
+        )
 
-    async def update_receipt(self, receipt_id: int, receipt: Receipt) -> ReceiptRow | None:
-        return await self._db.update_receipt(receipt_id, receipt)
+    async def update_receipt(
+        self,
+        receipt_id: UUID,
+        receipt: Receipt,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
+    ) -> ReceiptRow | None:
+        return await self._db.update_receipt(
+            receipt_id, receipt, user_id=user_id, can_see_all=can_see_all
+        )
 
-    async def verify_receipt(self, receipt_id: int) -> ReceiptRow | None:
-        return await self._db.verify_receipt(receipt_id)
+    async def verify_receipt(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptRow | None:
+        return await self._db.verify_receipt(receipt_id, user_id=user_id, can_see_all=can_see_all)
 
-    async def delete_receipt(self, receipt_id: int) -> ReceiptRow | None:
+    async def delete_receipt(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptRow | None:
         """Delete a receipt; raises ReceiptReferencedError if a benchmark references it."""
         try:
-            return await self._db.delete_receipt(receipt_id)
+            return await self._db.delete_receipt(
+                receipt_id, user_id=user_id, can_see_all=can_see_all
+            )
         except asyncpg.ForeignKeyViolationError as exc:
             raise ReceiptReferencedError(str(exc)) from exc
 
@@ -152,6 +180,7 @@ class ReceiptService:
         media_type: str | None = None,
         size_bytes: int | None = None,
         status: str = "pending",
+        user_id: UUID | None = None,
         bypass_review: bool = False,
     ) -> ImageRow:
         return await self._image_db.store_image(
@@ -160,11 +189,16 @@ class ReceiptService:
             media_type=media_type,
             size_bytes=size_bytes,
             status=status,
+            user_id=user_id,
             bypass_review=bypass_review,
         )
 
-    async def get_image_by_id(self, image_id: int) -> ImageRow | None:
-        return await self._image_db.get_image_by_id(image_id)
+    async def get_image_by_id(
+        self, image_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ImageRow | None:
+        return await self._image_db.get_image_by_id(
+            image_id, user_id=user_id, can_see_all=can_see_all
+        )
 
     async def list_pending_images(self) -> list[ImageRow]:
         return await self._image_db.list_pending_images()
@@ -174,19 +208,23 @@ class ReceiptService:
         status: list[str] | None = None,
         limit: int = 50,
         offset: int = 0,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
     ) -> list[ImageRow]:
-        return await self._image_db.list_images(status=status, limit=limit, offset=offset)
+        return await self._image_db.list_images(
+            status=status, limit=limit, offset=offset, user_id=user_id, can_see_all=can_see_all
+        )
 
-    async def mark_image_analyzed(self, image_id: int, receipt_id: int) -> None:
+    async def mark_image_analyzed(self, image_id: UUID, receipt_id: UUID) -> None:
         await self._image_db.mark_analyzed(image_id, receipt_id)
 
-    async def mark_image_failed(self, image_id: int, error: str) -> None:
+    async def mark_image_failed(self, image_id: UUID, error: str) -> None:
         await self._image_db.mark_failed(image_id, error)
 
-    async def update_image_path(self, image_id: int, image_path: str) -> None:
+    async def update_image_path(self, image_id: UUID, image_path: str) -> None:
         await self._image_db.update_image_path(image_id, image_path)
 
-    async def delete_image_row(self, image_id: int) -> None:
+    async def delete_image_row(self, image_id: UUID) -> None:
         await self._image_db.delete_image(image_id)
 
     # ── Extraction methods ───────────────────────────────────────────

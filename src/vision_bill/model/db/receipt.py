@@ -1,5 +1,6 @@
 from datetime import date as Date
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -7,7 +8,7 @@ from pydantic import BaseModel, Field
 class ReceiptRow(BaseModel):
     """Represents a single row in the `receipts` table."""
 
-    id: int
+    id: UUID
     confidence: int
     merchant_name: str
     merchant_address: str | None = None
@@ -24,15 +25,16 @@ class ReceiptRow(BaseModel):
     payment_method: str = "unknown"
     created_at: Date | None = None
     status: str = "unverified"
-    image_id: int | None = None
+    image_id: UUID | None = None
     verified: bool = False
+    user_id: UUID | None = None
 
 
 class LineItemRow(BaseModel):
     """Represents a single row in the `line_items` table."""
 
-    id: int
-    receipt_id: int
+    id: UUID
+    receipt_id: UUID
     description: str
     quantity: float
     unit_price: Decimal
@@ -44,8 +46,8 @@ class LineItemRow(BaseModel):
 class TaxLineRow(BaseModel):
     """Represents a single row in the `taxes` table."""
 
-    id: int
-    receipt_id: int
+    id: UUID
+    receipt_id: UUID
     name: str
     rate: float | None = None
     amount: Decimal

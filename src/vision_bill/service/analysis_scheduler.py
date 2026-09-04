@@ -2,6 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 from ..config import Settings
 from ..model.db.image import ImageRow
@@ -17,9 +18,9 @@ logger = logging.getLogger(__name__)
 class PendingImageResult:
     """Outcome of analysing a single queued image."""
 
-    image_id: int
+    image_id: UUID
     status: str  # "analyzed" | "failed"
-    receipt_id: int | None = None
+    receipt_id: UUID | None = None
     error: str | None = None
 
 
@@ -141,6 +142,7 @@ class AnalysisScheduler:
                 image_id=image.id,
                 status="verified" if bypass else "unverified",
                 verified=bypass,
+                user_id=image.user_id,
             )
             await self._image_db.mark_analyzed(image.id, row.id)
         except Exception as e:  # noqa: BLE001 - worker boundary: fail the image, never the cycle
@@ -155,7 +157,7 @@ class AnalysisScheduler:
                     await self._image_db.update_image_path(image.id, str(perm_path))
             except Exception:
                 logger.exception(
-                    "Failed to move bypass-reviewed image %d to permanent storage", image.id
+                    "Failed to move bypass-reviewed image %s to permanent storage", image.id
                 )
 
         return PendingImageResult(image_id=image.id, status="analyzed", receipt_id=row.id)

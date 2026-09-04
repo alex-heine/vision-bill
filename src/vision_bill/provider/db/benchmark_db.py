@@ -2,9 +2,11 @@
 
 This module deliberately never writes to receipts, line_items, taxes or images.
 """
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 
@@ -15,7 +17,7 @@ class BenchmarkDB:
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
 
-    async def create_run(self, *, model_ids: list[str], receipt_ids: list[int], fingerprint: str,
+    async def create_run(self, *, model_ids: list[str], receipt_ids: list[UUID], fingerprint: str,
                          model_digests: dict[str, str | None], timeout: int, policy: CouncilPolicy,
                          absolute: Any, relative: Any, apply_flags: bool, prompt_version: str,
                          scoring_version: str) -> BenchmarkRun:
@@ -25,30 +27,37 @@ class BenchmarkDB:
                  council_policy, council_absolute_threshold, council_relative_threshold, apply_council_flags,
                  prompt_version, scoring_version)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *""",
-                model_ids, receipt_ids, fingerprint, model_digests, timeout, policy.value, absolute, relative,
+                json.dumps(model_ids),
+                json.dumps([str(receipt_id) for receipt_id in receipt_ids]),
+                fingerprint,
+                json.dumps(model_digests),
+                timeout,
+                policy.value,
+                absolute,
+                relative,
                 apply_flags, prompt_version, scoring_version)
             await conn.executemany("INSERT INTO benchmark_tasks (run_id, model_id, receipt_id) VALUES ($1,$2,$3)", [(row["id"], m, r) for m in model_ids for r in receipt_ids])
             await conn.executemany("INSERT INTO benchmark_summaries (run_id, model_id, model_digest) VALUES ($1,$2,$3)", [(row["id"], m, model_digests.get(m)) for m in model_ids])
         return self._run(row)
 
-    async def run(self, run_id: int) -> BenchmarkRun | None:
+    async def run(self, run_id: UUID) -> BenchmarkRun | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM benchmark_runs WHERE id=$1", run_id)
         return self._run(row) if row else None
 
     async def runs(self) -> list[BenchmarkRun]:
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM benchmark_runs ORDER BY id DESC")
+            rows = await conn.fetch("SELECT * FROM benchmark_runs ORDER BY created_at DESC, id DESC")
         return [self._run(r) for r in rows]
 
-    async def task_counts(self, run_id: int) -> dict[str, int]:
+    async def task_counts(self, run_id: UUID) -> dict[str, int]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("SELECT status, count(*) AS n FROM benchmark_tasks WHERE run_id=$1 GROUP BY status", run_id)
             terminal = await conn.fetchval("SELECT COALESCE(sum(completed), 0) FROM benchmark_summaries WHERE run_id=$1", run_id)
         counts = {str(r["status"]): int(r["n"]) for r in rows}
         return {**{name: counts.get(name, 0) for name in ("queued", "running", "waiting_for_model", "retrying")}, "terminal": int(terminal)}
 
-    async def summaries(self, run_id: int) -> list[BenchmarkSummary]:
+    async def summaries(self, run_id: UUID) -> list[BenchmarkSummary]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM benchmark_summaries WHERE run_id=$1 ORDER BY model_id", run_id)
         return [BenchmarkSummary(model_id=r["model_id"], model_digest=r["model_digest"], completed=r["completed"], succeeded=r["succeeded"], failed=r["failed"], average_score=(r["total_score"] / r["succeeded"] if r["succeeded"] else None), average_confidence=(r["total_confidence"] / r["succeeded"] if r["succeeded"] else None), average_attempts=(r["total_attempts"] / r["completed"] if r["completed"] else None), average_latency_ms=(r["total_latency_ms"] / r["completed"] if r["completed"] else None), council_candidates=r["council_candidates"], council_findings=r["council_findings"]) for r in rows]
@@ -79,4 +88,10 @@ class BenchmarkDB:
 
     @staticmethod
     def _run(row: Mapping[str, Any]) -> BenchmarkRun:
-        return BenchmarkRun(id=row["id"], status=row["status"], model_ids=list(row["model_ids"]), receipt_ids=list(row["receipt_ids"]), dataset_fingerprint=row["dataset_fingerprint"], prompt_version=row["prompt_version"], scoring_version=row["scoring_version"], council_policy=row["council_policy"], apply_council_flags=row["apply_council_flags"], created_at=row["created_at"], completed_at=row["completed_at"])
+        model_ids = json.loads(row["model_ids"]) if isinstance(row["model_ids"], str) else row["model_ids"]
+        receipt_ids = (
+            json.loads(row["receipt_ids"])
+            if isinstance(row["receipt_ids"], str)
+            else row["receipt_ids"]
+        )
+        return BenchmarkRun(id=row["id"], status=row["status"], model_ids=list(model_ids), receipt_ids=list(receipt_ids), dataset_fingerprint=row["dataset_fingerprint"], prompt_version=row["prompt_version"], scoring_version=row["scoring_version"], council_policy=row["council_policy"], apply_council_flags=row["apply_council_flags"], created_at=row["created_at"], completed_at=row["completed_at"])

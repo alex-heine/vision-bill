@@ -7,6 +7,7 @@
 - **Multi-modal Local LLMs:** Uses Ollama to run vision-capable models (like Llama-3-Vision, Moondream, or Gemma) directly on your hardware.
 - **Local Extraction:** No separate OCR engine is required; the LLM performs both image understanding and structured data extraction in one step.
 - **Privacy-Preserving Architecture:** Built with FastAPI to serve as a local backend for personal use.
+- **Non-sequential identifiers:** Users, receipts, images, line items, taxes, tags, and benchmark runs use UUIDs throughout the database and API.
 
 ### 🛠️ Quickstart (Docker)
 The fastest way to get started is using Docker Compose:

@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +16,7 @@ class BenchmarkCreate(BaseModel):
     """A durable, local-only benchmark request."""
 
     model_ids: list[str] | None = None
-    receipt_ids: list[int] | None = None
+    receipt_ids: list[UUID] | None = None
     category: str | None = None
     max_source_confidence: int | None = Field(default=None, ge=0, le=100)
     limit: int | None = Field(default=None, ge=1)
@@ -27,10 +28,10 @@ class BenchmarkCreate(BaseModel):
 
 
 class BenchmarkRun(BaseModel):
-    id: int
+    id: UUID
     status: str
     model_ids: list[str]
-    receipt_ids: list[int]
+    receipt_ids: list[UUID]
     dataset_fingerprint: str
     prompt_version: str
     scoring_version: str
@@ -62,4 +63,3 @@ class BenchmarkStatus(BaseModel):
     retrying: int
     terminal: int
     summaries: list[BenchmarkSummary]
-

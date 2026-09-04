@@ -7,6 +7,7 @@ from datetime import time as Time
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 
@@ -24,6 +25,11 @@ from vision_bill.provider.db.receipt_db import (
 )
 
 PATCH_TARGET = "vision_bill.provider.db.receipt_db.asyncpg"
+RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000002")
+IMAGE_ID = UUID("00000000-0000-4000-8000-000000000003")
+LINE_ITEM_ID = UUID("00000000-0000-4000-8000-000000000004")
+TAX_ID = UUID("00000000-0000-4000-8000-000000000005")
 
 
 def _make_pool(conn: AsyncMock) -> MagicMock:
@@ -39,7 +45,7 @@ def _make_pool(conn: AsyncMock) -> MagicMock:
 
 
 def _receipt_row(
-    receipt_id: int = 1,
+    receipt_id: UUID = RECEIPT_ID,
     **overrides: object,
 ) -> dict[str, Any]:
     """A realistic asyncpg receipts row (driver types, not strings)."""
@@ -68,9 +74,9 @@ def _receipt_row(
     return row
 
 
-def _line_item_row(receipt_id: int = 1) -> dict[str, Any]:
+def _line_item_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
     return {
-        "id": 1,
+        "id": LINE_ITEM_ID,
         "receipt_id": receipt_id,
         "description": "Item A",
         "quantity": Decimal("2.0000"),
@@ -81,9 +87,9 @@ def _line_item_row(receipt_id: int = 1) -> dict[str, Any]:
     }
 
 
-def _tax_row(receipt_id: int = 1) -> dict[str, Any]:
+def _tax_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
     return {
-        "id": 1,
+        "id": TAX_ID,
         "receipt_id": receipt_id,
         "name": "VAT",
         "rate": Decimal("0.1900"),
@@ -213,20 +219,22 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     """persist_receipt should insert receipt + line items + taxes."""
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_id=3, category="grocery"))
+    mock_conn.fetchrow = AsyncMock(
+        return_value=_receipt_row(image_id=IMAGE_ID, category="grocery")
+    )
     mock_conn.execute = AsyncMock()
 
     receipt = _make_receipt()
 
-    result = await db.persist_receipt(receipt, image_id=3, status="unverified")
+    result = await db.persist_receipt(receipt, image_id=IMAGE_ID, status="unverified")
 
-    assert result.id == 1
+    assert result.id == RECEIPT_ID
     assert result.confidence == 95
     assert result.merchant_name == "Test Store"
     assert result.status == "unverified"
     assert result.category == "grocery"
     assert result.verified is False
-    assert result.image_id == 3
+    assert result.image_id == IMAGE_ID
     assert result.time == "14:30:00"
     assert result.created_at == Date(2024, 1, 15)
 
@@ -242,7 +250,7 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     assert fetchrow_call.args[8] == "grocery"
     # status, image_id and verified are the last three bound parameters
     assert fetchrow_call.args[15] == "unverified"
-    assert fetchrow_call.args[16] == 3
+    assert fetchrow_call.args[16] == IMAGE_ID
     assert fetchrow_call.args[17] is False
 
     assert mock_conn.fetchrow.call_count == 1
@@ -256,13 +264,15 @@ async def test_get_receipt_by_found(db: ReceiptDB) -> None:
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(receipt_id=42, merchant_name="Found Store", status="verified")
+        return_value=_receipt_row(
+            receipt_id=RECEIPT_ID, merchant_name="Found Store", status="verified"
+        )
     )
 
-    result = await db.get_receipt_by_id(42)
+    result = await db.get_receipt_by_id(RECEIPT_ID)
 
     assert result is not None
-    assert result.id == 42
+    assert result.id == RECEIPT_ID
     assert result.merchant_name == "Found Store"
     assert result.status == "verified"
 
@@ -274,7 +284,7 @@ async def test_get_receipt_by_not_found(db: ReceiptDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await db.get_receipt_by_id(999)
+    result = await db.get_receipt_by_id(OTHER_RECEIPT_ID)
 
     assert result is None
 
@@ -286,8 +296,8 @@ async def test_list_receipts(db: ReceiptDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.fetch = AsyncMock(
         return_value=[
-            _receipt_row(receipt_id=2, merchant_name="Store B"),
-            _receipt_row(receipt_id=1, merchant_name="Store A"),
+            _receipt_row(receipt_id=OTHER_RECEIPT_ID, merchant_name="Store B"),
+            _receipt_row(receipt_id=RECEIPT_ID, merchant_name="Store A"),
         ]
     )
 
@@ -308,23 +318,25 @@ async def test_get_receipt_with_details(db: ReceiptDB) -> None:
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(receipt_id=5, image_id=9, image_path="/save/img.png")
+        return_value=_receipt_row(
+            receipt_id=RECEIPT_ID, image_id=IMAGE_ID, image_path="/save/img.png"
+        )
     )
 
     def fetch_side_effect(sql: str, *args: object) -> list[dict[str, Any]]:
         if "line_items" in sql:
-            return [_line_item_row(5)]
+            return [_line_item_row(RECEIPT_ID)]
         if "taxes" in sql:
-            return [_tax_row(5)]
+            return [_tax_row(RECEIPT_ID)]
         return []
 
     mock_conn.fetch = AsyncMock(side_effect=fetch_side_effect)
 
-    details = await db.get_receipt_with_details(5)
+    details = await db.get_receipt_with_details(RECEIPT_ID)
 
     assert details is not None
-    assert details.receipt.id == 5
-    assert details.receipt.image_id == 9
+    assert details.receipt.id == RECEIPT_ID
+    assert details.receipt.image_id == IMAGE_ID
     assert details.image_path == "/save/img.png"
     assert len(details.line_items) == 1
     assert details.line_items[0].description == "Item A"
@@ -344,13 +356,13 @@ async def test_update_receipt(db: ReceiptDB) -> None:
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(receipt_id=1, merchant_name="Updated Store")
+        return_value=_receipt_row(receipt_id=RECEIPT_ID, merchant_name="Updated Store")
     )
     mock_conn.execute = AsyncMock()
 
     receipt = _make_receipt(merchant_name="Updated Store")
 
-    result = await db.update_receipt(1, receipt)
+    result = await db.update_receipt(RECEIPT_ID, receipt)
 
     assert result is not None
     assert result.merchant_name == "Updated Store"
@@ -377,7 +389,7 @@ async def test_update_receipt_not_found(db: ReceiptDB) -> None:
     mock_conn.fetchrow = AsyncMock(return_value=None)
     mock_conn.execute = AsyncMock()
 
-    result = await db.update_receipt(999, _make_receipt())
+    result = await db.update_receipt(OTHER_RECEIPT_ID, _make_receipt())
 
     assert result is None
     mock_conn.execute.assert_not_called()
@@ -389,22 +401,24 @@ async def test_verify_receipt(db: ReceiptDB) -> None:
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(receipt_id=1, status="verified", verified=True, image_id=9)
+        return_value=_receipt_row(
+            receipt_id=RECEIPT_ID, status="verified", verified=True, image_id=IMAGE_ID
+        )
     )
 
-    result = await db.verify_receipt(1)
+    result = await db.verify_receipt(RECEIPT_ID)
 
     assert result is not None
     assert result.status == "verified"
     assert result.verified is True
-    assert result.image_id == 9
+    assert result.image_id == IMAGE_ID
 
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
     assert "status = 'verified'" in fetchrow_call.args[0]
     assert "verified = TRUE" in fetchrow_call.args[0]
     assert "RETURNING *" in fetchrow_call.args[0]
-    assert fetchrow_call.args[1] == 1
+    assert fetchrow_call.args[1] == RECEIPT_ID
 
 
 @pytest.mark.asyncio
@@ -414,7 +428,7 @@ async def test_verify_receipt_not_found(db: ReceiptDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await db.verify_receipt(999)
+    result = await db.verify_receipt(OTHER_RECEIPT_ID)
 
     assert result is None
 
@@ -428,19 +442,21 @@ async def test_delete_receipt(db: ReceiptDB) -> None:
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(receipt_id=7, image_id=9, merchant_name="Doomed Store")
+        return_value=_receipt_row(
+            receipt_id=RECEIPT_ID, image_id=IMAGE_ID, merchant_name="Doomed Store"
+        )
     )
 
-    result = await db.delete_receipt(7)
+    result = await db.delete_receipt(RECEIPT_ID)
 
     assert result is not None
-    assert result.id == 7
-    assert result.image_id == 9
+    assert result.id == RECEIPT_ID
+    assert result.image_id == IMAGE_ID
 
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
     assert fetchrow_call.args[0] == DELETE_RECEIPT_SQL
-    assert fetchrow_call.args[1] == 7
+    assert fetchrow_call.args[1] == RECEIPT_ID
 
 
 @pytest.mark.asyncio
@@ -450,7 +466,7 @@ async def test_delete_receipt_not_found(db: ReceiptDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await db.delete_receipt(999)
+    result = await db.delete_receipt(OTHER_RECEIPT_ID)
 
     assert result is None
 

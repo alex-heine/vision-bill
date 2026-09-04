@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 
@@ -21,6 +22,10 @@ from vision_bill.provider.db.image_db import (
 )
 
 PATCH_TARGET = "vision_bill.provider.db.image_db.asyncpg"
+IMAGE_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_IMAGE_ID = UUID("00000000-0000-4000-8000-000000000002")
+RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000003")
+USER_ID = UUID("00000000-0000-4000-8000-000000000004")
 
 
 def _make_pool(conn: AsyncMock) -> MagicMock:
@@ -35,7 +40,7 @@ def _make_pool(conn: AsyncMock) -> MagicMock:
     return pool
 
 
-def _image_row(image_id: int = 1, **overrides: object) -> dict[str, Any]:
+def _image_row(image_id: UUID = IMAGE_ID, **overrides: object) -> dict[str, Any]:
     """A realistic asyncpg images row (driver types, not strings)."""
     row: dict[str, Any] = {
         "id": image_id,
@@ -146,7 +151,7 @@ async def test_store_image(db: ImageDB) -> None:
     """store_image should INSERT with the right params and map the RETURNING row."""
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(return_value=_image_row(image_id=1, bypass_review=True))
+    mock_conn.fetchrow = AsyncMock(return_value=_image_row(bypass_review=True))
 
     result = await db.store_image(
         "/tmp/a.png",
@@ -154,11 +159,12 @@ async def test_store_image(db: ImageDB) -> None:
         media_type="image/png",
         size_bytes=123,
         status="pending",
+        user_id=USER_ID,
         bypass_review=True,
     )
 
     assert isinstance(result, ImageRow)
-    assert result.id == 1
+    assert result.id == IMAGE_ID
     assert result.image_path == "/tmp/a.png"
     assert result.status == "pending"
     assert result.bypass_review is True
@@ -166,13 +172,15 @@ async def test_store_image(db: ImageDB) -> None:
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
     assert fetchrow_call.args[0] == INSERT_IMAGE_SQL
-    # original_filename, media_type, size_bytes, image_path ($4), status ($5), bypass ($6)
+    # original_filename, media_type, size_bytes, image_path ($4), status ($5),
+    # user_id ($6), bypass_review ($7)
     assert fetchrow_call.args[1] == "a.png"
     assert fetchrow_call.args[2] == "image/png"
     assert fetchrow_call.args[3] == 123
     assert fetchrow_call.args[4] == "/tmp/a.png"
     assert fetchrow_call.args[5] == "pending"
-    assert fetchrow_call.args[6] is True
+    assert fetchrow_call.args[6] == USER_ID
+    assert fetchrow_call.args[7] is True
 
 
 @pytest.mark.asyncio
@@ -180,18 +188,18 @@ async def test_get_image_by_found(db: ImageDB) -> None:
     """get_image_by_id should return an ImageRow when found."""
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(return_value=_image_row(image_id=42, status="analyzed"))
+    mock_conn.fetchrow = AsyncMock(return_value=_image_row(status="analyzed"))
 
-    result = await db.get_image_by_id(42)
+    result = await db.get_image_by_id(IMAGE_ID)
 
     assert result is not None
-    assert result.id == 42
+    assert result.id == IMAGE_ID
     assert result.status == "analyzed"
 
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
     assert fetchrow_call.args[0] == GET_IMAGE_SQL
-    assert fetchrow_call.args[1] == 42
+    assert fetchrow_call.args[1] == IMAGE_ID
 
 
 @pytest.mark.asyncio
@@ -201,7 +209,7 @@ async def test_get_image_by_not_found(db: ImageDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await db.get_image_by_id(999)
+    result = await db.get_image_by_id(OTHER_IMAGE_ID)
 
     assert result is None
 
@@ -213,14 +221,14 @@ async def test_list_pending_images(db: ImageDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.fetch = AsyncMock(
         return_value=[
-            _image_row(image_id=1, status="pending"),
-            _image_row(image_id=2, status="failed"),
+            _image_row(image_id=IMAGE_ID, status="pending"),
+            _image_row(image_id=OTHER_IMAGE_ID, status="failed"),
         ]
     )
 
     results = await db.list_pending_images()
 
-    assert [row.id for row in results] == [1, 2]
+    assert [row.id for row in results] == [IMAGE_ID, OTHER_IMAGE_ID]
     assert [row.status for row in results] == ["pending", "failed"]
 
     fetch_call = mock_conn.fetch.call_args
@@ -236,9 +244,9 @@ async def test_mark_analyzed(db: ImageDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.execute = AsyncMock()
 
-    await db.mark_analyzed(1, 7)
+    await db.mark_analyzed(IMAGE_ID, RECEIPT_ID)
 
-    mock_conn.execute.assert_awaited_once_with(MARK_ANALYZED_SQL, 1, 7)
+    mock_conn.execute.assert_awaited_once_with(MARK_ANALYZED_SQL, IMAGE_ID, RECEIPT_ID)
     assert "status = 'analyzed'" in MARK_ANALYZED_SQL
     assert "receipt_id = $2" in MARK_ANALYZED_SQL
 
@@ -250,9 +258,9 @@ async def test_mark_failed(db: ImageDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.execute = AsyncMock()
 
-    await db.mark_failed(1, "boom")
+    await db.mark_failed(IMAGE_ID, "boom")
 
-    mock_conn.execute.assert_awaited_once_with(MARK_FAILED_SQL, 1, "boom")
+    mock_conn.execute.assert_awaited_once_with(MARK_FAILED_SQL, IMAGE_ID, "boom")
     assert "status = 'failed'" in MARK_FAILED_SQL
     assert "error = $2" in MARK_FAILED_SQL
 
@@ -264,9 +272,9 @@ async def test_update_image_path(db: ImageDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.execute = AsyncMock()
 
-    await db.update_image_path(1, "/save/receipt_7.png")
+    await db.update_image_path(IMAGE_ID, "/save/receipt.png")
 
-    mock_conn.execute.assert_awaited_once_with(UPDATE_IMAGE_PATH_SQL, 1, "/save/receipt_7.png")
+    mock_conn.execute.assert_awaited_once_with(UPDATE_IMAGE_PATH_SQL, IMAGE_ID, "/save/receipt.png")
     assert "image_path = $2" in UPDATE_IMAGE_PATH_SQL
 
 
@@ -277,7 +285,7 @@ async def test_delete_image(db: ImageDB) -> None:
     db._pool = _make_pool(mock_conn)
     mock_conn.execute = AsyncMock()
 
-    await db.delete_image(1)
+    await db.delete_image(IMAGE_ID)
 
-    mock_conn.execute.assert_awaited_once_with(DELETE_IMAGE_SQL, 1)
+    mock_conn.execute.assert_awaited_once_with(DELETE_IMAGE_SQL, IMAGE_ID)
     assert "DELETE FROM images" in DELETE_IMAGE_SQL

@@ -4,6 +4,7 @@ from datetime import date as Date
 from datetime import time as Time
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 
@@ -22,9 +23,9 @@ INSERT_RECEIPT_SQL = """
     INSERT INTO receipts
         (confidence, merchant_name, merchant_address, receipt_number, date, time,
          currency, category, subtotal, discount_total, tax_total, tip, total,
-         payment_method, status, image_id, verified)
+         payment_method, status, image_id, verified, user_id)
     VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
     RETURNING *
 """
 
@@ -179,7 +180,7 @@ class ReceiptDB:
         )
 
     async def _insert_children(
-        self, conn: asyncpg.Connection, receipt_id: int, receipt: Receipt
+        self, conn: asyncpg.Connection, receipt_id: UUID, receipt: Receipt
     ) -> None:
         """Insert the receipt's line items and taxes (shared insert logic)."""
         if receipt.line_items:
@@ -210,14 +211,16 @@ class ReceiptDB:
     async def persist_receipt(
         self,
         receipt: Receipt,
-        image_id: int | None = None,
+        image_id: UUID | None = None,
         status: str = "unverified",
         verified: bool = False,
+        user_id: UUID | None = None,
     ) -> ReceiptRow:
         """Insert a receipt (with line items and taxes) into PostgreSQL.
 
         ``image_id`` links the receipt to an ``images`` row (the FK swap); it
-        is ``None`` for receipts created without an associated image.
+        is ``None`` for receipts created without an associated image. ``user_id``
+        is the owning user (``None`` for legacy/unowned rows).
         """
         logger.info(
             "Persisting receipt for '%s' on %s",
@@ -245,38 +248,51 @@ class ReceiptDB:
                 status,
                 image_id,
                 verified,
+                user_id,
             )
-            receipt_id: int = row["id"]
+            receipt_id: UUID = row["id"]
             await self._insert_children(conn, receipt_id, receipt)
 
         return self._receipt_row_from_record(row)
 
-    async def update_receipt(self, receipt_id: int, receipt: Receipt) -> ReceiptRow | None:
+    async def update_receipt(
+        self,
+        receipt_id: UUID,
+        receipt: Receipt,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
+    ) -> ReceiptRow | None:
         """Update a receipt row and replace its line items and taxes.
 
-        Returns None when no receipt with the given id exists.
+        Returns None when no receipt with the given id exists (or, for
+        non-see-all callers, when it is not owned by ``user_id``).
         """
-        logger.info("Updating receipt %d", receipt_id)
+        logger.info("Updating receipt %s", receipt_id)
+
+        args: list[Any] = [
+            receipt.confidence,
+            receipt.merchant_name,
+            receipt.merchant_address,
+            receipt.receipt_number,
+            receipt.date,
+            self._receipt_time_value(receipt),
+            receipt.currency,
+            receipt.category,
+            float(receipt.subtotal),
+            float(receipt.discount_total),
+            float(receipt.tax_total),
+            float(receipt.tip) if receipt.tip is not None else None,
+            float(receipt.total),
+            receipt.payment_method,
+            receipt_id,
+        ]
+        sql = UPDATE_RECEIPT_SQL
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            sql = sql.replace("RETURNING *", f"AND user_id = ${len(args)} RETURNING *", 1)
 
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                UPDATE_RECEIPT_SQL,
-                receipt.confidence,
-                receipt.merchant_name,
-                receipt.merchant_address,
-                receipt.receipt_number,
-                receipt.date,
-                self._receipt_time_value(receipt),
-                receipt.currency,
-                receipt.category,
-                float(receipt.subtotal),
-                float(receipt.discount_total),
-                float(receipt.tax_total),
-                float(receipt.tip) if receipt.tip is not None else None,
-                float(receipt.total),
-                receipt.payment_method,
-                receipt_id,
-            )
+            row = await conn.fetchrow(sql, *args)
             if row is None:
                 return None
 
@@ -286,43 +302,71 @@ class ReceiptDB:
 
         return self._receipt_row_from_record(row)
 
-    async def verify_receipt(self, receipt_id: int) -> ReceiptRow | None:
+    async def verify_receipt(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptRow | None:
         """Mark a receipt as verified.
 
         The image path no longer lives on the receipt row — it is moved to the
         permanent location on the ``images`` row by the caller (see
         ``ImageDB.update_image_path``). Returns None when no receipt with the
-        given id exists.
+        given id exists (or is not owned by a non-see-all ``user_id``).
         """
-        logger.info("Verifying receipt %d", receipt_id)
+        logger.info("Verifying receipt %s", receipt_id)
+
+        args: list[Any] = [receipt_id]
+        sql = VERIFY_RECEIPT_SQL
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            sql = sql.replace("RETURNING *", f"AND user_id = ${len(args)} RETURNING *", 1)
 
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(VERIFY_RECEIPT_SQL, receipt_id)
+            row = await conn.fetchrow(sql, *args)
         if row is None:
             return None
         return self._receipt_row_from_record(row)
 
-    async def delete_receipt(self, receipt_id: int) -> ReceiptRow | None:
+    async def delete_receipt(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptRow | None:
         """Delete a receipt row. Line items and taxes cascade via their foreign keys.
 
-        Returns the deleted row, or None when no receipt with the given id exists.
-        A ``benchmark_tasks`` row still referencing the receipt raises
-        ``asyncpg.ForeignKeyViolationError`` (that FK has no ON DELETE rule).
+        Returns the deleted row, or None when no receipt with the given id exists
+        (or is not owned by a non-see-all ``user_id``). A ``benchmark_tasks`` row
+        still referencing the receipt raises ``asyncpg.ForeignKeyViolationError``
+        (that FK has no ON DELETE rule).
         """
-        logger.info("Deleting receipt %d", receipt_id)
+        logger.info("Deleting receipt %s", receipt_id)
+
+        args: list[Any] = [receipt_id]
+        sql = DELETE_RECEIPT_SQL
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            sql = sql.replace("RETURNING *", f"AND user_id = ${len(args)} RETURNING *", 1)
 
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(DELETE_RECEIPT_SQL, receipt_id)
+            row = await conn.fetchrow(sql, *args)
         if row is None:
             return None
         return self._receipt_row_from_record(row)
 
     # ── Query helpers ────────────────────────────────────────────────
 
-    async def get_receipt_by_id(self, receipt_id: int) -> ReceiptRow | None:
-        """Fetch a single receipt row by its primary key."""
+    async def get_receipt_by_id(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptRow | None:
+        """Fetch a single receipt row by its primary key, scoped to its owner.
+
+        Non-see-all callers only match their own rows (other users' receipts
+        resolve to ``None`` -> 404 upstream).
+        """
+        args: list[Any] = [receipt_id]
+        sql = GET_RECEIPT_SQL
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            sql += f" AND user_id = ${len(args)}"
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(GET_RECEIPT_SQL, receipt_id)
+            row = await conn.fetchrow(sql, *args)
         if row is None:
             return None
         return self._receipt_row_from_record(row)
@@ -335,15 +379,21 @@ class ReceiptDB:
         date_from: Date | None = None,
         date_to: Date | None = None,
         search: str | None = None,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
     ) -> list[ReceiptRow]:
         """Return a paginated list of receipts ordered by date descending.
 
         Optional filters: ``status`` (IN list), an inclusive ``date_from`` /
         ``date_to`` range, and case-insensitive ``search`` over merchant name
-        or receipt number.
+        or receipt number. Non-see-all callers are restricted to their own
+        rows via ``user_id``.
         """
         where: list[str] = []
         args: list[Any] = []
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            where.append(f"user_id = ${len(args)}")
         if status:
             args.append(status)
             where.append(f"status = ANY(${len(args)})")
@@ -368,15 +418,22 @@ class ReceiptDB:
             rows = await conn.fetch(sql, *args)
         return [self._receipt_row_from_record(row) for row in rows]
 
-    async def get_receipt_with_details(self, receipt_id: int) -> ReceiptWithDetails | None:
+    async def get_receipt_with_details(
+        self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ReceiptWithDetails | None:
         """Fetch a receipt together with its line items, taxes and image path.
 
         The image path is resolved via a LEFT JOIN on the images table so the
         response exposes it for frontends even though the receipts row only
-        stores the FK.
+        stores the FK. Non-see-all callers only match their own rows.
         """
+        args: list[Any] = [receipt_id]
+        sql = GET_RECEIPT_WITH_IMAGE_SQL
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            sql += f" AND r.user_id = ${len(args)}"
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(GET_RECEIPT_WITH_IMAGE_SQL, receipt_id)
+            row = await conn.fetchrow(sql, *args)
             if row is None:
                 return None
             li_rows = await conn.fetch(LIST_LINE_ITEMS_SQL, receipt_id)

@@ -36,7 +36,7 @@
 		error = '';
 		const ids = receiptIds
 			.split(',')
-			.map((id) => Number(id.trim()))
+			.map((id) => id.trim())
 			.filter(Boolean);
 		const body: Record<string, unknown> = {
 			model_ids: selected,
@@ -97,7 +97,7 @@
 				>Explicit receipt IDs <input
 					class="mt-1 block w-full rounded-lg border border-outline-variant p-2"
 					bind:value={receiptIds}
-					placeholder="e.g. 12,14"
+					placeholder="Comma-separated receipt UUIDs"
 				/></label
 			>
 			<p class="mt-1 text-xs text-on-surface-variant">Explicit IDs override filters.</p>

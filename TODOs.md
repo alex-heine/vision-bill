@@ -29,7 +29,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
     7.1. Navbar is too tight on mobile
     7.2. Tags are annoying on mobile
     7.3. Images are too large for mobile screen
-    7.4. New navigation bar: Search - Upload - Settings
+    7.4. New navigation bar: Search - Upload - to be discussed (Settings or List of Receipts, but then where are settings..?)
         7.4.1. Dashboard is click on logo, statistics is a button inside dashboard
         7.4.2. Upload also has a small button to list receipts
         7.4.3. Settings hides the llm test suite

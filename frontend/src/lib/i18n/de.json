@@ -9,7 +9,23 @@
 		"queue": "Warteschlange",
 		"receipts": "Belege",
 		"benchmarks": "Benchmarks",
-		"settings": "Einstellungen"
+		"settings": "Einstellungen",
+		"signedInAs": "Angemeldet als {name}",
+		"signOut": "Abmelden"
+	},
+	"login": {
+		"title": "Anmelden",
+		"username": "Benutzername",
+		"password": "Passwort",
+		"signIn": "Anmelden",
+		"signingIn": "Anmeldung…",
+		"createAccount": "Konto erstellen",
+		"creating": "Konto wird erstellt…",
+		"noAccount": "Noch kein Konto?",
+		"haveAccount": "Du hast bereits ein Konto?",
+		"switchToRegister": "Jetzt erstellen",
+		"switchToLogin": "Anmelden",
+		"error": "Etwas ist schiefgelaufen."
 	},
 	"theme": {
 		"light": "Hell",

@@ -6,6 +6,7 @@ from datetime import date as Date
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 
@@ -17,6 +18,9 @@ from vision_bill.provider.llm.base import ModelInfo
 from vision_bill.service.analysis_scheduler import AnalysisScheduler, PendingImageResult
 
 SchedulerContext = tuple[AnalysisScheduler, MagicMock, MagicMock, MagicMock]
+RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000001")
+IMAGE_ID = UUID("00000000-0000-4000-8000-000000000002")
+USER_ID = UUID("00000000-0000-4000-8000-000000000003")
 
 
 def _make_receipt() -> Receipt:
@@ -31,7 +35,7 @@ def _make_receipt() -> Receipt:
     )
 
 
-def _receipt_row(receipt_id: int = 7) -> ReceiptRow:
+def _receipt_row(receipt_id: UUID = RECEIPT_ID) -> ReceiptRow:
     return ReceiptRow(
         id=receipt_id,
         confidence=95,
@@ -42,9 +46,18 @@ def _receipt_row(receipt_id: int = 7) -> ReceiptRow:
     )
 
 
-def _pending_image(image_id: int, image_path: Path, bypass_review: bool = False) -> ImageRow:
+def _pending_image(
+    image_id: UUID,
+    image_path: Path,
+    bypass_review: bool = False,
+    user_id: UUID | None = None,
+) -> ImageRow:
     return ImageRow(
-        id=image_id, image_path=str(image_path), status="pending", bypass_review=bypass_review
+        id=image_id,
+        image_path=str(image_path),
+        status="pending",
+        bypass_review=bypass_review,
+        user_id=user_id,
     )
 
 
@@ -61,7 +74,7 @@ def scheduler_context(settings: Settings) -> Generator[SchedulerContext, None, N
     receipt_service = MagicMock()
     receipt_service.db_ready = True
     receipt_service.analyse_receipt_from_path = AsyncMock(return_value=_make_receipt())
-    receipt_service.persist_receipt = AsyncMock(return_value=_receipt_row(7))
+    receipt_service.persist_receipt = AsyncMock(return_value=_receipt_row())
 
     image_db = MagicMock()
     image_db.is_ready = True
@@ -84,7 +97,9 @@ async def test_unavailable_provider_keeps_queue(
     """A raising provider yields no results and leaves the queue untouched."""
     scheduler, provider, _, image_db = scheduler_context
     provider.get_available_models = AsyncMock(side_effect=RuntimeError("down"))
-    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(11, Path("/tmp/a.png"))])
+    image_db.list_pending_images = AsyncMock(
+        return_value=[_pending_image(IMAGE_ID, Path("/tmp/a.png"))]
+    )
 
     result = await scheduler.process_pending()
 
@@ -110,23 +125,35 @@ async def test_no_models_keeps_queue(scheduler_context: SchedulerContext) -> Non
 async def test_success_analyzes_and_links(
     scheduler_context: SchedulerContext, tmp_path: Path
 ) -> None:
-    """A pending image with an existing file is analyzed, persisted and marked."""
+    """A pending image with an existing file is analyzed, persisted and marked.
+
+    The receipt inherits the image's owner so the row is scoped to the user who
+    queued it, even though the worker runs outside any request.
+    """
     scheduler, _, receipt_service, image_db = scheduler_context
     image_file = tmp_path / "a.png"
     image_file.write_bytes(b"image-bytes")
-    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(11, image_file)])
+    image_db.list_pending_images = AsyncMock(
+        return_value=[_pending_image(IMAGE_ID, image_file, user_id=USER_ID)]
+    )
     receipt = _make_receipt()
     receipt_service.analyse_receipt_from_path = AsyncMock(return_value=receipt)
 
     result = await scheduler.process_pending()
 
-    assert result == [PendingImageResult(image_id=11, status="analyzed", receipt_id=7)]
+    assert result == [
+        PendingImageResult(image_id=IMAGE_ID, status="analyzed", receipt_id=RECEIPT_ID)
+    ]
     # The configured model is unavailable, so the first available one is used.
     receipt_service.analyse_receipt_from_path.assert_awaited_once_with("test-model", image_file)
     receipt_service.persist_receipt.assert_awaited_once_with(
-        receipt, image_id=11, status="unverified", verified=False
+        receipt,
+        image_id=IMAGE_ID,
+        status="unverified",
+        verified=False,
+        user_id=USER_ID,
     )
-    image_db.mark_analyzed.assert_awaited_once_with(11, 7)
+    image_db.mark_analyzed.assert_awaited_once_with(IMAGE_ID, RECEIPT_ID)
     image_db.mark_failed.assert_not_awaited()
 
 
@@ -141,20 +168,28 @@ async def test_bypass_review_auto_verifies(
     perm_file = tmp_path / "receipt_7.png"
     scheduler._image_service.store_perm_image = MagicMock(return_value=perm_file)
     image_db.list_pending_images = AsyncMock(
-        return_value=[_pending_image(11, image_file, bypass_review=True)]
+        return_value=[
+            _pending_image(IMAGE_ID, image_file, bypass_review=True, user_id=USER_ID)
+        ]
     )
     receipt = _make_receipt()
     receipt_service.analyse_receipt_from_path = AsyncMock(return_value=receipt)
 
     result = await scheduler.process_pending()
 
-    assert result == [PendingImageResult(image_id=11, status="analyzed", receipt_id=7)]
+    assert result == [
+        PendingImageResult(image_id=IMAGE_ID, status="analyzed", receipt_id=RECEIPT_ID)
+    ]
     receipt_service.persist_receipt.assert_awaited_once_with(
-        receipt, image_id=11, status="verified", verified=True
+        receipt,
+        image_id=IMAGE_ID,
+        status="verified",
+        verified=True,
+        user_id=USER_ID,
     )
-    image_db.mark_analyzed.assert_awaited_once_with(11, 7)
-    scheduler._image_service.store_perm_image.assert_called_once_with(image_file, 7)
-    image_db.update_image_path.assert_awaited_once_with(11, str(perm_file))
+    image_db.mark_analyzed.assert_awaited_once_with(IMAGE_ID, RECEIPT_ID)
+    scheduler._image_service.store_perm_image.assert_called_once_with(image_file, RECEIPT_ID)
+    image_db.update_image_path.assert_awaited_once_with(IMAGE_ID, str(perm_file))
 
 
 @pytest.mark.asyncio
@@ -165,13 +200,13 @@ async def test_analysis_failure_marks_failed(
     scheduler, _, receipt_service, image_db = scheduler_context
     image_file = tmp_path / "a.png"
     image_file.write_bytes(b"image-bytes")
-    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(11, image_file)])
+    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(IMAGE_ID, image_file)])
     receipt_service.analyse_receipt_from_path = AsyncMock(side_effect=ValueError("bad json"))
 
     result = await scheduler.process_pending()
 
-    assert result == [PendingImageResult(image_id=11, status="failed", error="bad json")]
-    image_db.mark_failed.assert_awaited_once_with(11, "bad json")
+    assert result == [PendingImageResult(image_id=IMAGE_ID, status="failed", error="bad json")]
+    image_db.mark_failed.assert_awaited_once_with(IMAGE_ID, "bad json")
     receipt_service.persist_receipt.assert_not_awaited()
     image_db.mark_analyzed.assert_not_awaited()
 
@@ -183,7 +218,7 @@ async def test_missing_file_marks_failed(
     """A queue row whose on-disk file vanished is marked failed, not analysed."""
     scheduler, _, receipt_service, image_db = scheduler_context
     missing = tmp_path / "gone.png"
-    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(11, missing)])
+    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(IMAGE_ID, missing)])
 
     result = await scheduler.process_pending()
 
@@ -207,11 +242,13 @@ async def test_model_fallback_uses_first_available(
     )
     image_file = tmp_path / "a.png"
     image_file.write_bytes(b"image-bytes")
-    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(11, image_file)])
+    image_db.list_pending_images = AsyncMock(return_value=[_pending_image(IMAGE_ID, image_file)])
 
     result = await scheduler.process_pending()
 
-    assert result == [PendingImageResult(image_id=11, status="analyzed", receipt_id=7)]
+    assert result == [
+        PendingImageResult(image_id=IMAGE_ID, status="analyzed", receipt_id=RECEIPT_ID)
+    ]
     receipt_service.analyse_receipt_from_path.assert_awaited_once_with("other-model", image_file)
 
 

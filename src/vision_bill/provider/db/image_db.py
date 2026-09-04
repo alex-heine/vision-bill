@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Mapping
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 
@@ -11,8 +12,8 @@ from ...model.db.image import ImageRow
 
 INSERT_IMAGE_SQL = """
     INSERT INTO images
-        (original_filename, media_type, size_bytes, image_path, status, bypass_review)
-    VALUES ($1, $2, $3, $4, $5, $6)
+        (original_filename, media_type, size_bytes, image_path, status, user_id, bypass_review)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
 """
 
@@ -24,12 +25,7 @@ LIST_PENDING_IMAGES_SQL = (
     "SELECT * FROM images WHERE status IN ('pending', 'failed') ORDER BY created_at ASC, id ASC"
 )
 
-LIST_IMAGES_SQL = "SELECT * FROM images ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2"
-
-LIST_IMAGES_BY_STATUS_SQL = (
-    "SELECT * FROM images WHERE status = ANY($1) ORDER BY created_at DESC, id DESC "
-    "LIMIT $2 OFFSET $3"
-)
+LIST_IMAGES_BASE_SQL = "SELECT * FROM images"
 
 MARK_ANALYZED_SQL = (
     "UPDATE images SET status = 'analyzed', receipt_id = $2, error = NULL, "
@@ -111,6 +107,7 @@ class ImageDB:
         media_type: str | None = None,
         size_bytes: int | None = None,
         status: str = "pending",
+        user_id: UUID | None = None,
         bypass_review: bool = False,
     ) -> ImageRow:
         """Insert a new images row (default status ``pending``) and return it."""
@@ -123,14 +120,22 @@ class ImageDB:
                 size_bytes,
                 image_path,
                 status,
+                user_id,
                 bypass_review,
             )
         return self._image_row_from_record(row)
 
-    async def get_image_by_id(self, image_id: int) -> ImageRow | None:
-        """Fetch a single image row by its primary key."""
+    async def get_image_by_id(
+        self, image_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
+    ) -> ImageRow | None:
+        """Fetch a single image row by its primary key, scoped to its owner."""
+        args: list[Any] = [image_id]
+        sql = GET_IMAGE_SQL
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            sql += f" AND user_id = ${len(args)}"
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(GET_IMAGE_SQL, image_id)
+            row = await conn.fetchrow(sql, *args)
         if row is None:
             return None
         return self._image_row_from_record(row)
@@ -146,33 +151,50 @@ class ImageDB:
         status: list[str] | None = None,
         limit: int = 50,
         offset: int = 0,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
     ) -> list[ImageRow]:
-        """List image rows (newest first), optionally filtered by status."""
+        """List image rows (newest first), optionally filtered by status.
+
+        Non-see-all callers are restricted to their own rows via ``user_id``.
+        """
+        where: list[str] = []
+        args: list[Any] = []
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            where.append(f"user_id = ${len(args)}")
+        if status:
+            args.append(status)
+            where.append(f"status = ANY(${len(args)})")
+
+        sql = LIST_IMAGES_BASE_SQL
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += f" ORDER BY created_at DESC, id DESC LIMIT ${len(args) + 1} OFFSET ${len(args) + 2}"
+        args.extend([limit, offset])
+
         async with self.pool.acquire() as conn:
-            if status:
-                rows = await conn.fetch(LIST_IMAGES_BY_STATUS_SQL, status, limit, offset)
-            else:
-                rows = await conn.fetch(LIST_IMAGES_SQL, limit, offset)
+            rows = await conn.fetch(sql, *args)
         return [self._image_row_from_record(row) for row in rows]
 
-    async def mark_analyzed(self, image_id: int, receipt_id: int) -> None:
+    async def mark_analyzed(self, image_id: UUID, receipt_id: UUID) -> None:
         """Mark an image analyzed and link it to its receipt."""
-        logger.info("Marking image %d analyzed (receipt %d)", image_id, receipt_id)
+        logger.info("Marking image %s analyzed (receipt %s)", image_id, receipt_id)
         async with self.pool.acquire() as conn:
             await conn.execute(MARK_ANALYZED_SQL, image_id, receipt_id)
 
-    async def mark_failed(self, image_id: int, error: str) -> None:
+    async def mark_failed(self, image_id: UUID, error: str) -> None:
         """Mark an image failed, recording the error for the next retry."""
-        logger.warning("Marking image %d failed: %s", image_id, error)
+        logger.warning("Marking image %s failed: %s", image_id, error)
         async with self.pool.acquire() as conn:
             await conn.execute(MARK_FAILED_SQL, image_id, error)
 
-    async def update_image_path(self, image_id: int, image_path: str) -> None:
+    async def update_image_path(self, image_id: UUID, image_path: str) -> None:
         """Update the on-disk path of an image (e.g. tmp -> permanent on verify)."""
         async with self.pool.acquire() as conn:
             await conn.execute(UPDATE_IMAGE_PATH_SQL, image_id, image_path)
 
-    async def delete_image(self, image_id: int) -> None:
+    async def delete_image(self, image_id: UUID) -> None:
         """Delete an image row (the on-disk file is removed by the caller)."""
         async with self.pool.acquire() as conn:
             await conn.execute(DELETE_IMAGE_SQL, image_id)

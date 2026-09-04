@@ -13,15 +13,16 @@
 	import type { ReceiptWrite } from '$lib/types';
 
 	let id = $derived(page.url.pathname.split('/').pop() ?? '');
+	const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 	let verifyOpen = $state(false);
 	let verifying = $state(false);
 	let saving = $state(false);
 
 	const detail = createQuery(
 		() => ({
-			queryKey: queryKeys.receipt(Number(id)),
-			queryFn: () => api.getReceipt(Number(id)),
-			enabled: /^\d+$/.test(id)
+			queryKey: queryKeys.receipt(id),
+			queryFn: () => api.getReceipt(id),
+			enabled: uuidPattern.test(id)
 		}),
 		() => queryClient
 	);
@@ -33,13 +34,13 @@
 	let canVerify = $derived(data !== null && data.receipt.status === 'unverified');
 
 	async function refresh(): Promise<void> {
-		await queryClient.invalidateQueries({ queryKey: queryKeys.receipt(Number(id)) });
+		await queryClient.invalidateQueries({ queryKey: queryKeys.receipt(id) });
 	}
 
 	async function saveOnly(write: ReceiptWrite) {
 		saving = true;
 		try {
-			await api.updateReceipt(Number(id), write);
+			await api.updateReceipt(id, write);
 			snackbar.notify('success', translate('receipt.saved'));
 			await refresh();
 		} catch {
@@ -52,8 +53,8 @@
 	async function saveAndVerify(write: ReceiptWrite) {
 		saving = true;
 		try {
-			await api.updateReceipt(Number(id), write);
-			await api.verifyReceipt(Number(id));
+			await api.updateReceipt(id, write);
+			await api.verifyReceipt(id);
 			snackbar.notify('success', translate('receipt.verifySuccess'));
 			await refresh();
 		} catch (error) {
@@ -72,7 +73,7 @@
 		if (verifying) return;
 		verifying = true;
 		try {
-			await api.verifyReceipt(Number(id));
+			await api.verifyReceipt(id);
 			snackbar.notify('success', translate('receipt.verifySuccess'));
 			verifyOpen = false;
 			await refresh();

@@ -9,7 +9,7 @@ import type { ReceiptRow } from './types';
 
 function receipt(overrides: Partial<ReceiptRow>): ReceiptRow {
 	return {
-		id: 1,
+		id: '00000000-0000-4000-8000-000000000001',
 		confidence: 100,
 		merchant_name: 'Shop',
 		merchant_address: null,
@@ -28,6 +28,7 @@ function receipt(overrides: Partial<ReceiptRow>): ReceiptRow {
 		status: 'verified',
 		image_id: null,
 		verified: true,
+		user_id: null,
 		...overrides
 	};
 }
@@ -35,10 +36,20 @@ function receipt(overrides: Partial<ReceiptRow>): ReceiptRow {
 describe('receipt statistics', () => {
 	it('uses only verified receipts and keeps currencies separate', () => {
 		const receipts = [
-			receipt({ id: 1, total: '10', currency: 'EUR' }),
-			receipt({ id: 2, total: '5.50', currency: 'EUR', category: 'restaurant' }),
-			receipt({ id: 3, total: '20', currency: 'USD' }),
-			receipt({ id: 4, status: 'unverified', verified: false, total: '999' })
+			receipt({ id: '00000000-0000-4000-8000-000000000001', total: '10', currency: 'EUR' }),
+			receipt({
+				id: '00000000-0000-4000-8000-000000000002',
+				total: '5.50',
+				currency: 'EUR',
+				category: 'restaurant'
+			}),
+			receipt({ id: '00000000-0000-4000-8000-000000000003', total: '20', currency: 'USD' }),
+			receipt({
+				id: '00000000-0000-4000-8000-000000000004',
+				status: 'unverified',
+				verified: false,
+				total: '999'
+			})
 		];
 
 		const verified = verifiedReceipts(receipts);
@@ -55,7 +66,10 @@ describe('receipt statistics', () => {
 	});
 
 	it('selects receipts from the current month', () => {
-		const receipts = [receipt({ date: '2026-08-31' }), receipt({ id: 2, date: '2026-07-31' })];
+		const receipts = [
+			receipt({ date: '2026-08-31' }),
+			receipt({ id: '00000000-0000-4000-8000-000000000002', date: '2026-07-31' })
+		];
 		expect(currentMonthReceipts(receipts, new Date('2026-08-31T12:00:00'))).toEqual([receipts[0]]);
 	});
 });

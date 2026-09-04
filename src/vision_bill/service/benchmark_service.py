@@ -1,9 +1,11 @@
 """Asynchronous, restart-safe local benchmark execution."""
 import asyncio
+import json
 import logging
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from ..model.benchmark import BenchmarkCreate, BenchmarkRun, BenchmarkStatus
 from ..model.receipt import LineItem, Receipt, TaxLine
@@ -59,7 +61,7 @@ class BenchmarkService:
             prompt_version=PROMPT_VERSION, scoring_version=SCORING_VERSION,
         )
 
-    async def get_status(self, run_id: int) -> BenchmarkStatus | None:
+    async def get_status(self, run_id: UUID) -> BenchmarkStatus | None:
         run = await self._db.run(run_id)
         if not run:
             return None
@@ -69,7 +71,7 @@ class BenchmarkService:
     async def list_runs(self) -> list[BenchmarkRun]:
         return await self._db.runs()
 
-    async def reevaluate(self, run_id: int, receipt_id: int, model_id: str) -> dict[str, Any]:
+    async def reevaluate(self, run_id: UUID, receipt_id: UUID, model_id: str) -> dict[str, Any]:
         """Transient inspection: extraction and field diff are returned, never stored."""
         run = await self._db.run(run_id)
         if not run or receipt_id not in run.receipt_ids or model_id not in run.model_ids:
@@ -84,7 +86,7 @@ class BenchmarkService:
         diff = {key: {"expected": expected_dump[key], "actual": actual_dump[key]} for key in expected_dump if expected_dump[key] != actual_dump[key]}
         return {"receipt_id": receipt_id, "model_id": model_id, "scores": scores, "expected": expected_dump, "actual": actual_dump, "diff": diff}
 
-    async def _select_receipts(self, request: BenchmarkCreate) -> list[int]:
+    async def _select_receipts(self, request: BenchmarkCreate) -> list[UUID]:
         if request.receipt_ids is not None:
             result = []
             for receipt_id in request.receipt_ids:
@@ -95,14 +97,14 @@ class BenchmarkService:
         rows = await self._receipts.list_receipts(limit=request.limit or 10_000, status=["verified"])
         return [r.id for r in rows if (request.category is None or r.category == request.category) and (request.max_source_confidence is None or r.confidence <= request.max_source_confidence)]
 
-    async def _expected_receipt_and_path(self, receipt_id: int) -> tuple[Receipt, str | None]:
+    async def _expected_receipt_and_path(self, receipt_id: UUID) -> tuple[Receipt, str | None]:
         details = await self._receipts.get_receipt_with_details(receipt_id)
         if details is None or not details.receipt.verified:
             raise ValueError("Benchmark data must be a verified receipt")
         r = details.receipt
         return Receipt.model_validate({"confidence": r.confidence, "merchant_name": r.merchant_name, "merchant_address": r.merchant_address, "receipt_number": r.receipt_number, "date": r.date, "time": r.time, "currency": r.currency, "category": r.category, "line_items": [LineItem.model_validate(x.model_dump()) for x in details.line_items], "taxes": [TaxLine.model_validate(x.model_dump()) for x in details.taxes], "subtotal": r.subtotal, "discount_total": r.discount_total, "tax_total": r.tax_total, "tip": r.tip, "total": r.total, "payment_method": r.payment_method}), details.image_path
 
-    async def _expected_receipt(self, receipt_id: int) -> Receipt:
+    async def _expected_receipt(self, receipt_id: UUID) -> Receipt:
         return (await self._expected_receipt_and_path(receipt_id))[0]
 
     async def _work(self) -> None:
@@ -151,7 +153,10 @@ class BenchmarkService:
     async def _run_digests(self, run: BenchmarkRun) -> dict[str, str | None]:
         async with self._receipts.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT model_digests FROM benchmark_runs WHERE id=$1", run.id)
-        return dict(row["model_digests"]) if row else {}
+        if not row:
+            return {}
+        value = row["model_digests"]
+        return dict(json.loads(value) if isinstance(value, str) else value)
 
     async def _timeout(self, run: BenchmarkRun) -> int:
         async with self._receipts.pool.acquire() as conn:

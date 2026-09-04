@@ -2,6 +2,7 @@ import logging
 import shutil
 import uuid
 from pathlib import Path
+from uuid import UUID
 
 import magic
 
@@ -91,7 +92,7 @@ class ImageService:
 
         return tmp_path
 
-    def store_perm_image(self, tmp_path: Path, receipt_id: int) -> Path | None:
+    def store_perm_image(self, tmp_path: Path, receipt_id: UUID) -> Path | None:
         """Move a tmp image to the permanent save dir under a stable name.
 
         Returns the destination path, or None if the tmp file no longer exists.
