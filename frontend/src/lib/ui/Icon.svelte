@@ -4,6 +4,7 @@
 		| 'queue'
 		| 'upload'
 		| 'receipts'
+		| 'search'
 		| 'settings'
 		| 'theme-light'
 		| 'theme-dark'
@@ -44,6 +45,9 @@
 		<path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z" />
 		<path d="M9 8h6" />
 		<path d="M9 12h6" />
+	{:else if icon === 'search'}
+		<circle cx="11" cy="11" r="7" />
+		<path d="m20 20-3.5-3.5" />
 	{:else if icon === 'settings'}
 		<path d="M4 6h16" />
 		<path d="M4 12h16" />
