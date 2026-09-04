@@ -3,6 +3,7 @@
 		"name": "Vision Bill"
 	},
 	"nav": {
+		"search": "Search",
 		"dashboard": "Dashboard",
 		"more": "More",
 		"statistics": "Statistics",
@@ -140,6 +141,20 @@
 		"noResults": "No receipts match your search.",
 		"unknownVendor": "Unknown merchant"
 	},
+	"search": {
+		"placeholder": "Search products…",
+		"emptyTitle": "Search your purchases",
+		"emptyBody": "Enter a product name to see past prices and the stores you bought it at. Only verified receipts are searched.",
+		"noResults": "No purchases match “{query}”.",
+		"latestPrice": "Latest",
+		"cheapestPrice": "Cheapest",
+		"averagePrice": "Average",
+		"tableDate": "Date",
+		"tableStore": "Store",
+		"tableItem": "Item",
+		"tableQty": "Qty",
+		"tableUnitPrice": "Unit price"
+	},
 	"dashboard": {
 		"verifiedOnly": "Verified receipts only",
 		"openStatistics": "Open statistics",
@@ -253,6 +268,9 @@
 		"invalidConfidence": "Confidence must be a whole number between 0 and 100."
 	},
 	"pages": {
+		"search": {
+			"title": "Search"
+		},
 		"dashboard": {
 			"title": "Dashboard"
 		},

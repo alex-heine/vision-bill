@@ -3,6 +3,7 @@
 		"name": "Vision Bill"
 	},
 	"nav": {
+		"search": "Suche",
 		"dashboard": "Übersicht",
 		"more": "Mehr",
 		"statistics": "Statistiken",
@@ -140,6 +141,20 @@
 		"noResults": "Keine Belege entsprechen Ihrer Suche.",
 		"unknownVendor": "Unbekannter Händler"
 	},
+	"search": {
+		"placeholder": "Produkte suchen…",
+		"emptyTitle": "Suche in deinen Einkäufen",
+		"emptyBody": "Gib einen Produktnamen ein, um frühere Preise und die Märkte zu sehen, in denen du ihn gekauft hast. Gesucht wird nur in verifizierten Belegen.",
+		"noResults": "Keine Einkäufe für “{query}” gefunden.",
+		"latestPrice": "Letzter",
+		"cheapestPrice": "Günstigster",
+		"averagePrice": "Durchschnitt",
+		"tableDate": "Datum",
+		"tableStore": "Markt",
+		"tableItem": "Artikel",
+		"tableQty": "Menge",
+		"tableUnitPrice": "Stückpreis"
+	},
 	"dashboard": {
 		"verifiedOnly": "Nur geprüfte Belege",
 		"openStatistics": "Statistiken öffnen",
@@ -253,6 +268,9 @@
 		"invalidConfidence": "Konfidenz muss eine ganze Zahl zwischen 0 und 100 sein."
 	},
 	"pages": {
+		"search": {
+			"title": "Suche"
+		},
 		"dashboard": {
 			"title": "Übersicht"
 		},
