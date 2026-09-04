@@ -114,7 +114,7 @@
 		{$t('common.error')}
 	</div>
 {:else if data}
-	<section class="mx-auto max-w-6xl">
+	<section class="mx-auto min-w-0 max-w-6xl">
 		<div class="flex items-center gap-3">
 			<a
 				href={resolve('/receipts')}
@@ -144,14 +144,14 @@
 			{/if}
 		</div>
 
-		<div class="mt-6 lg:grid lg:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)] lg:gap-8">
+		<div class="mt-6 min-w-0 lg:grid lg:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)] lg:gap-8">
 			{#if data.receipt.image_id !== null}
-				<aside class="mb-6 lg:mb-0">
-					<div class="lg:sticky lg:top-20">
+				<aside class="mb-6 min-w-0 lg:mb-0">
+					<div class="min-w-0 lg:sticky lg:top-20">
 						<img
 							src={api.imageFileUrl(data.receipt.image_id)}
 							alt={data.receipt.merchant_name}
-							class="max-h-[calc(100vh-6rem)] w-full rounded-xl border border-outline-variant bg-surface-container object-contain"
+							class="mx-auto block h-auto max-h-[calc(100svh-10rem)] max-w-full rounded-xl border border-outline-variant bg-surface-container object-contain lg:max-h-[calc(100vh-6rem)] lg:w-full"
 							onerror={(e) => ((e.currentTarget as HTMLImageElement).hidden = true)}
 						/>
 					</div>

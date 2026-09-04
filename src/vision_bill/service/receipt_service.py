@@ -2,6 +2,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
@@ -12,6 +13,8 @@ from ..config import ImageSettings, PGSettings
 from ..model.db.image import ImageRow
 from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
+from ..model.search import ProductSearchResponse
+from ..model.statistics import ReceiptStatistics
 from ..provider.db.image_db import ImageDB
 from ..provider.db.receipt_db import ReceiptDB
 from ..provider.db.user_db import UserDB
@@ -115,6 +118,10 @@ class ReceiptService:
             receipt_id, user_id=user_id, can_see_all=can_see_all
         )
 
+    async def get_receipt_by_image_id(self, image_id: UUID) -> ReceiptRow | None:
+        """Find the receipt already produced for an image, if any."""
+        return await self._db.get_receipt_by_image_id(image_id)
+
     async def list_receipts(
         self,
         limit: int = 50,
@@ -135,6 +142,44 @@ class ReceiptService:
             search=search,
             user_id=user_id,
             can_see_all=can_see_all,
+        )
+
+    async def search_products(
+        self,
+        query: str,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
+    ) -> ProductSearchResponse:
+        """Search verified line items and calculate their unit-price summary."""
+        purchases = await self._db.search_products(
+            query, user_id=user_id, can_see_all=can_see_all
+        )
+        if not purchases:
+            return ProductSearchResponse(query=query, purchases=[])
+
+        prices = [purchase.unit_price for purchase in purchases]
+        # Currency conversion is intentionally out of scope: the current
+        # application assumes a user pays in one currency.
+        return ProductSearchResponse(
+            query=query,
+            purchases=purchases,
+            latest_price=purchases[0].unit_price,
+            cheapest_price=min(prices),
+            average_price=sum(prices, Decimal(0)) / len(prices),
+            currency=purchases[0].currency,
+        )
+
+    async def get_statistics(
+        self,
+        user_id: UUID | None = None,
+        can_see_all: bool = False,
+        weeks: int = 12,
+    ) -> ReceiptStatistics:
+        """Return verified receipt aggregates scoped to the current user."""
+        return await self._db.get_statistics(
+            user_id=user_id,
+            can_see_all=can_see_all,
+            weeks=weeks,
         )
 
     async def get_receipt_with_details(
@@ -192,6 +237,10 @@ class ReceiptService:
             user_id=user_id,
             bypass_review=bypass_review,
         )
+
+    async def claim_image_for_analysis(self, image_id: UUID) -> ImageRow | None:
+        """Claim a queued image before an in-request analysis starts."""
+        return await self._image_db.claim_for_analysis(image_id)
 
     async def get_image_by_id(
         self, image_id: UUID, user_id: UUID | None = None, can_see_all: bool = False

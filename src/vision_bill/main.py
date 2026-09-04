@@ -11,10 +11,12 @@ from .api.auth import router as auth_router
 from .api.benchmarks import router as benchmark_router
 from .api.images import router as image_router
 from .api.receipts import router as receipt_router
+from .api.search import router as search_router
+from .api.statistics import router as statistics_router
 from .api.system.llm import router as llm_router
 from .api.system.main import router as system_router
 from .api.tags import router as tags_router
-from .config import Settings, settings
+from .config import Settings, mark_startup_settings, settings
 from .helper.logging_config import setup_logging
 from .provider.db.user_db import UserDB
 from .provider.factory import get_llm_provider
@@ -59,6 +61,7 @@ async def bootstrap_admin(user_db: UserDB, settings: Settings) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    mark_startup_settings(settings)
     provider = get_llm_provider(settings.llm)
     receipt_service = ReceiptService(settings.images, settings.pg, provider)
     try:
@@ -86,6 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.receipt_service = receipt_service
     app.state.image_service = image_service
+    app.state.llm_provider = provider
     app.state.user_db = receipt_service.user_db
     app.state.analysis_scheduler = scheduler
     app.state.benchmark_service = benchmark_service
@@ -112,6 +116,8 @@ app = FastAPI(title="Receipt Tracker API", lifespan=lifespan)
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(receipt_router, prefix="/api/v1/receipts", tags=["Receipts"])
 app.include_router(image_router, prefix="/api/v1/images", tags=["Images"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["Search"])
+app.include_router(statistics_router, prefix="/api/v1/statistics", tags=["Statistics"])
 app.include_router(benchmark_router, prefix="/api/v1/benchmarks", tags=["Benchmarks"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["Tags"])
 # System routes

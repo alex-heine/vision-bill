@@ -19,20 +19,38 @@ INSERT_IMAGE_SQL = """
 
 GET_IMAGE_SQL = "SELECT * FROM images WHERE id = $1"
 
-# The "queue": images that still need analysis (pending) or that failed and
-# should be retried (failed). Oldest first so the backlog drains FIFO.
+# The "queue": images that still need analysis (pending), are being retried
+# (failed), or whose previous worker lease expired. Oldest first so the
+# backlog drains FIFO.
 LIST_PENDING_IMAGES_SQL = (
-    "SELECT * FROM images WHERE status IN ('pending', 'failed') ORDER BY created_at ASC, id ASC"
+    "SELECT * FROM images WHERE status IN ('pending', 'failed') "
+    "OR (status = 'processing' AND (processing_at IS NULL OR "
+    "processing_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes')) "
+    "ORDER BY created_at ASC, id ASC"
 )
+
+CLAIM_IMAGE_SQL = """
+    UPDATE images
+    SET status = 'processing', processing_at = CURRENT_TIMESTAMP, error = NULL
+    WHERE id = $1
+      AND (
+          status IN ('pending', 'failed')
+          OR (status = 'processing' AND (processing_at IS NULL OR
+              processing_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes'))
+      )
+    RETURNING *
+"""
 
 LIST_IMAGES_BASE_SQL = "SELECT * FROM images"
 
 MARK_ANALYZED_SQL = (
     "UPDATE images SET status = 'analyzed', receipt_id = $2, error = NULL, "
-    "analyzed_at = CURRENT_TIMESTAMP WHERE id = $1"
+    "analyzed_at = CURRENT_TIMESTAMP, processing_at = NULL WHERE id = $1"
 )
 
-MARK_FAILED_SQL = "UPDATE images SET status = 'failed', error = $2 WHERE id = $1"
+MARK_FAILED_SQL = (
+    "UPDATE images SET status = 'failed', error = $2, processing_at = NULL WHERE id = $1"
+)
 
 UPDATE_IMAGE_PATH_SQL = "UPDATE images SET image_path = $2 WHERE id = $1"
 
@@ -141,10 +159,16 @@ class ImageDB:
         return self._image_row_from_record(row)
 
     async def list_pending_images(self) -> list[ImageRow]:
-        """Return the analysis queue: pending and failed images, oldest first."""
+        """Return unclaimed and expired analysis jobs, oldest first."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(LIST_PENDING_IMAGES_SQL)
         return [self._image_row_from_record(row) for row in rows]
+
+    async def claim_for_analysis(self, image_id: UUID) -> ImageRow | None:
+        """Atomically claim an image so only one worker analyzes it."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(CLAIM_IMAGE_SQL, image_id)
+        return self._image_row_from_record(row) if row is not None else None
 
     async def list_images(
         self,

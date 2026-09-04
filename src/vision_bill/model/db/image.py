@@ -8,7 +8,7 @@ class ImageRow(BaseModel):
     """Represents a single row in the `images` table.
 
     An image owns its on-disk path and its analysis workflow
-    (pending -> analyzed | failed). A successfully analyzed image is linked
+    (pending -> processing -> analyzed | failed). A successfully analyzed image is linked
     to a receipt via ``receipt_id``.
     """
 
@@ -24,3 +24,4 @@ class ImageRow(BaseModel):
     user_id: UUID | None = None
     created_at: datetime | None = None
     analyzed_at: datetime | None = None
+    processing_at: datetime | None = None

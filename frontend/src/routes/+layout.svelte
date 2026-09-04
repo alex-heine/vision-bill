@@ -19,11 +19,21 @@
 	let theme = $state<'light' | 'dark'>(
 		document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
 	);
+	let moreOpen = $state(false);
+	let moreMenu: HTMLDivElement | undefined = $state();
+	let moreButton: HTMLButtonElement | undefined = $state();
 
 	function toggleTheme() {
 		theme = theme === 'light' ? 'dark' : 'light';
 		document.documentElement.dataset.theme = theme;
 		localStorage.setItem('vb-theme', theme);
+		moreOpen = false;
+	}
+
+	function closeMore(event?: MouseEvent | KeyboardEvent) {
+		if (event instanceof KeyboardEvent && event.key !== 'Escape') return;
+		moreOpen = false;
+		if (event instanceof KeyboardEvent) moreButton?.focus();
 	}
 
 	function onLocaleChange(event: Event) {
@@ -31,6 +41,7 @@
 		const value = select.value;
 		if (value === 'en' || value === 'de') {
 			void setLocale(value);
+			moreOpen = false;
 		}
 	}
 
@@ -51,6 +62,22 @@
 	// truth; this is just the client's view of it).
 	onMount(() => {
 		void initSession();
+		const onDocumentClick = (event: MouseEvent) => {
+			if (
+				moreOpen &&
+				moreMenu &&
+				moreButton &&
+				!moreMenu.contains(event.target as Node) &&
+				!moreButton.contains(event.target as Node)
+			)
+				moreOpen = false;
+		};
+		document.addEventListener('click', onDocumentClick);
+		document.addEventListener('keydown', closeMore);
+		return () => {
+			document.removeEventListener('click', onDocumentClick);
+			document.removeEventListener('keydown', closeMore);
+		};
 	});
 
 	// Auth guard: signed out -> the login page; signed in on /login -> home.
@@ -74,6 +101,7 @@
 
 	type NavPath =
 		'/' | '/statistics' | '/queue' | '/upload' | '/receipts' | '/benchmarks/results' | '/settings';
+	type MobileNavPath = '/' | '/upload' | '/receipts';
 
 	let navItems = $derived([
 		{ path: '/', label: $t('nav.dashboard'), icon: 'dashboard' as const },
@@ -81,11 +109,23 @@
 		{ path: '/queue', label: $t('nav.queue'), icon: 'queue' as const },
 		{ path: '/upload', label: $t('nav.upload'), icon: 'upload' as const },
 		{ path: '/receipts', label: $t('nav.receipts'), icon: 'receipts' as const },
-		{ path: '/benchmarks/results', label: $t('nav.benchmarks'), icon: 'dashboard' as const },
 		...(currentUser?.is_admin
-			? [{ path: '/settings' as const, label: $t('nav.settings'), icon: 'settings' as const }]
+			? [
+					{
+						path: '/benchmarks/results' as const,
+						label: $t('nav.benchmarks'),
+						icon: 'dashboard' as const
+					},
+					{ path: '/settings' as const, label: $t('nav.settings'), icon: 'settings' as const }
+				]
 			: [])
 	] satisfies { path: NavPath; label: string; icon: IconName }[]);
+
+	let mobileNavItems = $derived([
+		{ path: '/', label: $t('nav.dashboard'), icon: 'dashboard' as const },
+		{ path: '/upload', label: $t('nav.upload'), icon: 'upload' as const },
+		{ path: '/receipts', label: $t('nav.receipts'), icon: 'receipts' as const }
+	] satisfies { path: MobileNavPath; label: string; icon: IconName }[]);
 
 	function isActive(path: string) {
 		return path === '/' ? activePath === '/' : activePath.startsWith(path);
@@ -107,7 +147,7 @@
 			class="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-outline-variant bg-surface-container px-4 md:px-8"
 		>
 			<a href={resolve('/')} class="flex items-center gap-2 text-lg font-semibold text-primary">
-				<Icon icon="receipts" />
+				<img src="/favicon.svg" alt="" class="size-7" />
 				<span>{$t('app.name')}</span>
 			</a>
 			<div class="flex items-center gap-2">
@@ -121,12 +161,66 @@
 						{queueCount}
 					</a>
 				{/if}
-				<span class="hidden text-sm text-on-surface-variant sm:inline">
+				<span class="hidden text-sm text-on-surface-variant md:inline">
 					{$t('nav.signedInAs', { values: { name: currentUser.username } })}
 				</span>
+				<div bind:this={moreMenu} class="relative md:hidden">
+					<button
+						class="rounded-full border border-outline-variant p-2 hover:bg-surface-container-high"
+						bind:this={moreButton}
+						type="button"
+						aria-label={$t('nav.more')}
+						aria-expanded={moreOpen}
+						aria-haspopup="menu"
+						onclick={() => (moreOpen = !moreOpen)}
+					>
+						<span class="text-sm font-semibold" aria-hidden="true"
+							>{currentUser.username.slice(0, 1).toUpperCase()}</span
+						>
+					</button>
+					{#if moreOpen}
+						<div
+							class="absolute right-0 top-12 z-30 min-w-52 rounded-xl border border-outline-variant bg-surface-container p-2 shadow-elevation-3"
+							role="menu"
+						>
+							{#if currentUser.is_admin}
+								<a
+									href={resolve('/settings')}
+									role="menuitem"
+									class="block rounded-lg px-3 py-2 text-sm hover:bg-surface-container-high"
+									onclick={() => closeMore()}>{$t('nav.settings')}</a
+								>
+							{/if}
+							<button
+								type="button"
+								role="menuitem"
+								class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-container-high"
+								onclick={toggleTheme}
+								>{$t('theme.toggle')}<Icon
+									icon={theme === 'dark' ? 'theme-light' : 'theme-dark'}
+								/></button
+							>
+							<label class="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm"
+								>{$t('language.label')}<select
+									class="rounded border border-outline-variant bg-surface px-1 py-0.5"
+									value={$locale}
+									onchange={onLocaleChange}
+									>{#each LOCALES as code (code)}<option value={code}>{code.toUpperCase()}</option
+										>{/each}</select
+								></label
+							>
+							<button
+								type="button"
+								role="menuitem"
+								class="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-container-high"
+								onclick={handleSignOut}>{$t('nav.signOut')}</button
+							>
+						</div>
+					{/if}
+				</div>
 				<button
 					type="button"
-					class="rounded-lg border border-outline-variant px-3 py-1 text-sm font-medium text-on-surface hover:bg-surface-container-high"
+					class="hidden rounded-lg border border-outline-variant px-3 py-1 text-sm font-medium text-on-surface hover:bg-surface-container-high md:block"
 					onclick={handleSignOut}
 				>
 					{$t('nav.signOut')}
@@ -134,7 +228,7 @@
 				<label class="sr-only" for="locale-select">{$t('language.label')}</label>
 				<select
 					id="locale-select"
-					class="rounded-lg border border-outline-variant bg-surface px-2 py-1 text-sm"
+					class="hidden rounded-lg border border-outline-variant bg-surface px-2 py-1 text-sm md:block"
 					value={$locale}
 					onchange={onLocaleChange}
 				>
@@ -144,7 +238,7 @@
 				</select>
 				<button
 					type="button"
-					class="rounded-lg p-2 hover:bg-surface-container-high"
+					class="hidden rounded-lg p-2 hover:bg-surface-container-high md:block"
 					title={$t('theme.toggle')}
 					aria-label={$t('theme.toggle')}
 					onclick={toggleTheme}
@@ -175,7 +269,7 @@
 				{/each}
 			</nav>
 
-			<main class="min-h-[calc(100vh-4rem)] flex-1 p-4 pb-24 md:p-8 md:pb-8">
+			<main class="min-h-[calc(100vh-4rem)] min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8">
 				{@render children()}
 			</main>
 		</div>
@@ -184,7 +278,7 @@
 			class="fixed inset-x-0 bottom-0 z-20 flex border-t border-outline-variant bg-surface-container md:hidden"
 			aria-label="Main"
 		>
-			{#each navItems as item (item.path)}
+			{#each mobileNavItems as item (item.path)}
 				{#if item.path === '/upload'}
 					<div class="relative flex flex-1 justify-center">
 						<a

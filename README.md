@@ -16,6 +16,16 @@ docker compose up -d
 ```
 *Note: You must have [Ollama](https://ollama.com/) installed and running on your host machine with vision-capable models downloaded.*
 
+### ⚙️ Configuration
+The application persists its resolved settings in `/app/config/config.yaml`,
+which Docker stores on the host at `./server_data/config`. The file is created
+on first startup from environment defaults. Environment variables always take
+precedence and are marked as environment-controlled in the admin Settings page.
+The page can change the default model, provider connection settings, and
+registration policy without exposing database credentials or secrets. Model,
+temperature, and registration changes apply immediately; changing the
+provider or host requires a server restart.
+
 ### ⚙️ Local Configuration & Selection
 Since different LLMs perform differently at image extraction, the project includes a model selection system:
 - **Model Testing:** Use `tests/data` to evaluate local models against known ground-truth JSON outputs.

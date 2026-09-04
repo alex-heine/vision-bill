@@ -245,11 +245,53 @@
 	>
 		{#if uploading}
 			<span class="inline-flex items-center gap-2">
-				<Icon icon="refresh" />
+				<span class="animate-spin"><Icon icon="refresh" /></span>
 				{$t('upload.uploading', { values: { file: file ? file.name : '' } })}
 			</span>
 		{:else}
 			{$t('upload.upload')}
 		{/if}
 	</button>
+
+	{#if uploading}
+		<div
+			class="mt-3 rounded-xl border border-primary/30 bg-primary-container/40 p-4"
+			role="status"
+			aria-live="polite"
+		>
+			<p class="text-sm font-medium text-on-primary-container">{$t('upload.processingTitle')}</p>
+			<p class="mt-1 text-xs text-on-primary-container/80">{$t('upload.processingBody')}</p>
+			<div
+				class="mt-3 h-2 overflow-hidden rounded-full bg-primary/15"
+				role="progressbar"
+				aria-label={$t('upload.processingTitle')}
+			>
+				<div class="analysis-progress h-full rounded-full bg-primary"></div>
+			</div>
+		</div>
+	{/if}
 </section>
+
+<style>
+	.analysis-progress {
+		width: 35%;
+		animation: analysis-progress 1.6s ease-in-out infinite;
+	}
+
+	@keyframes analysis-progress {
+		from {
+			transform: translateX(-110%);
+		}
+		to {
+			transform: translateX(320%);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.analysis-progress {
+			animation: none;
+			width: 100%;
+			opacity: 0.55;
+		}
+	}
+</style>

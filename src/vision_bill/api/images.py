@@ -92,9 +92,34 @@ async def upload_image(
             },
         )
 
+    claimed = await receipt_service.claim_image_for_analysis(image_row.id)
+    if claimed is None:
+        logger.info("Image %s was claimed by the background worker", image_row.id)
+        return JSONResponse(
+            status_code=202,
+            headers={"Location": _location(image_row.id)},
+            content={
+                "image_id": str(image_row.id),
+                "status": "pending",
+                "warning": PENDING_QUEUE_WARNING,
+            },
+        )
+    image_row = claimed
+
     available_ids = {m.id for m in models}
-    chosen_model = model_id if (model_id and model_id in available_ids) else models[0].id
-    llm_response = await receipt_service.analyse_receipt_from_path(chosen_model, tmp_path)
+    preferred_model = settings.llm.model_name
+    chosen_model = (
+        model_id
+        if model_id and model_id in available_ids
+        else preferred_model
+        if preferred_model in available_ids
+        else models[0].id
+    )
+    try:
+        llm_response = await receipt_service.analyse_receipt_from_path(chosen_model, tmp_path)
+    except Exception as exc:
+        await receipt_service.mark_image_failed(image_row.id, str(exc))
+        raise
 
     if effective_bypass_review:
         row = await receipt_service.persist_receipt(

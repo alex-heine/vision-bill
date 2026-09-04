@@ -3,6 +3,7 @@
 SHELL := /bin/bash
 
 .PHONY: help install-uv setup migrate run docker-build docker-up docker-down docker-logs test lint context-budget \
+	script-context-budget script-create-benchmark db-configure-roles \
 	fe-install fe-dev fe-build fe-sync fe-deploy fe-docker fe-check fe-test fe-test-e2e fe-verify fe
 
 help: ## Show this help
@@ -38,8 +39,23 @@ lint: ## Lint (ruff) and type-check (mypy)
 	uv run ruff check src
 	uv run mypy src
 
-context-budget: ## Measure the exact prompt/image token budget on an Ollama model
-	uv run python scripts/context_budget.py $(ARGS)
+# --- Operational scripts -------------------------------------------------
+# Values loaded here become real environment variables and therefore override
+# the application's .env files. Override with: make ... SCRIPTS_ENV=path/to/file
+SCRIPTS_ENV ?= .env.scripts
+WITH_SCRIPTS_ENV = set -a; if [[ -f "$(SCRIPTS_ENV)" ]]; then source "$(SCRIPTS_ENV)"; fi; set +a;
+
+script-context-budget: ## Measure Ollama context usage (ARGS="...")
+	@$(WITH_SCRIPTS_ENV) uv run python scripts/context_budget.py $(ARGS)
+
+script-create-benchmark: ## Queue a benchmark API run (ARGS="...")
+	@$(WITH_SCRIPTS_ENV) uv run python scripts/create_benchmark_run.py $(ARGS)
+
+db-configure-roles: ## Create/update PostgreSQL runtime and read-only group roles
+	@$(WITH_SCRIPTS_ENV) test -n "$$MIGRATION_DATABASE_URL" || { echo "Set MIGRATION_DATABASE_URL in $(SCRIPTS_ENV)"; exit 2; }; \
+		psql "$$MIGRATION_DATABASE_URL" -v database_name="$${PG__DB:-vision_bill}" -f scripts/configure_db_roles.sql
+
+context-budget: script-context-budget ## Alias for script-context-budget
 
 # --- Frontend (SvelteKit SPA) -------------------------------------------
 # Node/npm are provided by nvm. Each recipe selects a supported Node version,

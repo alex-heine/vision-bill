@@ -19,6 +19,7 @@ services:
       - ./src/vision_bill:/app/src/vision_bill
       - ./server_data/logs:/app/logs
       - ./server_data/uploads:/app/uploads
+      - ./server_data/config:/app/config
     command:
       - sh
       - -c

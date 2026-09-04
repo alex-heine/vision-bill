@@ -118,9 +118,27 @@ class AnalysisScheduler:
         model_id = self._select_model(models)
         pending = await self._image_db.list_pending_images()
         logger.info("Analysis cycle: %d image(s) queued, using model %s", len(pending), model_id)
-        return [await self._analyze_one(image, model_id) for image in pending]
+        results: list[PendingImageResult] = []
+        for image in pending:
+            claimed = await self._image_db.claim_for_analysis(image.id)
+            if claimed is None:
+                logger.info("Image %s was claimed by another worker", image.id)
+                continue
+            results.append(await self._analyze_one(claimed, model_id))
+        return results
 
     async def _analyze_one(self, image: ImageRow, model_id: str) -> PendingImageResult:
+        if image.receipt_id is not None:
+            await self._image_db.mark_analyzed(image.id, image.receipt_id)
+            return PendingImageResult(
+                image_id=image.id, status="analyzed", receipt_id=image.receipt_id
+            )
+
+        existing = await self._receipt_service.get_receipt_by_image_id(image.id)
+        if existing is not None:
+            await self._image_db.mark_analyzed(image.id, existing.id)
+            return PendingImageResult(image_id=image.id, status="analyzed", receipt_id=existing.id)
+
         image_path = Path(image.image_path) if image.image_path else None
         if image_path is None or not image_path.exists():
             error = f"Image file missing: {image.image_path}"

@@ -85,12 +85,13 @@ CREATE TABLE IF NOT EXISTS images (
     size_bytes        BIGINT,
     image_path        TEXT,
     status            VARCHAR(20) NOT NULL DEFAULT 'pending'
-                      CHECK (status IN ('pending', 'analyzed', 'failed')),
+                      CHECK (status IN ('pending', 'processing', 'analyzed', 'failed')),
     error             TEXT,
     receipt_id        UUID REFERENCES receipts(id) ON DELETE SET NULL,
     bypass_review     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     analyzed_at       TIMESTAMP WITH TIME ZONE,
+    processing_at     TIMESTAMP WITH TIME ZONE,
     user_id           UUID REFERENCES users(id) ON DELETE CASCADE
 );
 """

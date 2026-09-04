@@ -27,6 +27,7 @@ from vision_bill.security.models import User
 
 JPEG_PATH = Path(__file__).parent / "data" / "bauhaus.jpeg"
 RECEIPTS_URL = "/api/v1/receipts"
+SEARCH_URL = "/api/v1/search"
 IMAGES_URL = "/api/v1/images"
 USER_ID = UUID("00000000-0000-4000-8000-000000000001")
 RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000002")
@@ -208,6 +209,7 @@ def test_upload_image_analyzes_and_returns_201(api_context: ApiContext, settings
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
             _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg"),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg", status="processing"),
             _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID),
         ]
     )
@@ -244,6 +246,12 @@ def test_upload_image_bypass_review_verifies_and_moves(
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
             _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg", bypass_review=True),
+            _image_row(
+                id=IMAGE_ID,
+                original_filename="bauhaus.jpeg",
+                bypass_review=True,
+                status="processing",
+            ),
             _receipt_row(
                 id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
             ),
@@ -286,6 +294,12 @@ def test_upload_image_uses_configured_bypass_review_default(
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
             _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg", bypass_review=True),
+            _image_row(
+                id=IMAGE_ID,
+                original_filename="bauhaus.jpeg",
+                bypass_review=True,
+                status="processing",
+            ),
             _receipt_row(
                 id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
             ),
@@ -312,6 +326,7 @@ def test_upload_image_explicit_false_overrides_configured_default(
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
             _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg"),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg", status="processing"),
             _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID),
         ]
     )
@@ -589,10 +604,16 @@ def test_analyze_images_success(api_context: ApiContext, tmp_path: Path) -> None
         return [_image_row(id=IMAGE_ID, status="pending", image_path=str(queued_file))]
 
     ctx.conn.fetch = AsyncMock(side_effect=fetch_side_effect)
-    # list_pending_images uses fetch (one pending row); persist_receipt uses fetchrow.
-    ctx.conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID)
-    )
+    # list_pending_images uses fetch; claiming the image and persisting the
+    # receipt use fetchrow with different row shapes.
+    def fetchrow_side_effect(sql: str, *args: object) -> dict[str, object] | None:
+        if sql == image_db_module.CLAIM_IMAGE_SQL:
+            return _image_row(id=IMAGE_ID, status="processing", image_path=str(queued_file))
+        if sql == receipt_db_module.GET_RECEIPT_BY_IMAGE_ID_SQL:
+            return None
+        return _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID)
+
+    ctx.conn.fetchrow = AsyncMock(side_effect=fetchrow_side_effect)
     ctx.conn.execute = AsyncMock()
 
     response = ctx.client.post(f"{IMAGES_URL}/analyze")
@@ -743,6 +764,50 @@ def test_list_receipts(api_context: ApiContext) -> None:
     assert body[1]["merchant_name"] == "Store A"
 
 
+def test_search_products_returns_verified_purchase_history(api_context: ApiContext) -> None:
+    """GET /search searches line-item descriptions and returns price summary data."""
+    ctx = api_context
+    ctx.conn.fetch = AsyncMock(
+        return_value=[
+            {
+                "receipt_id": RECEIPT_ID,
+                "description": "Gouda Mittelalt",
+                "quantity": Decimal("1.0000"),
+                "unit_price": Decimal("3.20"),
+                "merchant_name": "Store A",
+                "date": Date(2024, 3, 1),
+                "time": Time(18, 0),
+                "currency": "EUR",
+            },
+            {
+                "receipt_id": OTHER_RECEIPT_ID,
+                "description": "Gouda",
+                "quantity": Decimal("1.0000"),
+                "unit_price": Decimal("2.80"),
+                "merchant_name": "Store B",
+                "date": Date(2024, 2, 1),
+                "time": Time(12, 0),
+                "currency": "EUR",
+            },
+        ]
+    )
+
+    response = ctx.client.get(SEARCH_URL, params={"query": "gouda"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["query"] == "gouda"
+    assert body["latest_price"] == "3.20"
+    assert body["cheapest_price"] == "2.80"
+    assert body["average_price"] == "3.00"
+    assert body["currency"] == "EUR"
+    assert body["purchases"][0]["description"] == "Gouda Mittelalt"
+    assert body["purchases"][0]["merchant_name"] == "Store A"
+    assert body["purchases"][0]["date"] == "2024-03-01"
+    assert body["purchases"][0]["unit_price"] == "3.20"
+    ctx.provider.analyse_receipt_from_model.assert_not_awaited()
+
+
 def test_list_receipts_without_filters_keeps_base_sql(api_context: ApiContext) -> None:
     """No filters -> plain paged query, no WHERE clause."""
     ctx = api_context
@@ -805,6 +870,7 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
             _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg"),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg", status="processing"),
             _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID),
         ]
     )

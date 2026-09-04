@@ -8,6 +8,6 @@ def get_llm_provider(llm_settings: LLMSettings) -> LLMProvider:
 
     if provider == LLMProviderEnum.OLLAMA:
         from .llm.ollama import OllamaProvider
-        return OllamaProvider(host=llm_settings.host)
+        return OllamaProvider(host=llm_settings.host, temperature=llm_settings.temperature)
 
     raise ValueError(f"Unsupported LLM provider: {provider}")

@@ -1,6 +1,7 @@
 """Queue a local benchmark run through the Vision Bill API."""
 
 import argparse
+import os
 import sys
 from typing import Any
 
@@ -9,9 +10,11 @@ import httpx
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--api-url", default="http://127.0.0.1:8080")
+    parser.add_argument("--api-url", default=os.getenv("VB_API_URL", "http://127.0.0.1:8080"))
+    parser.add_argument("--username", default=os.getenv("VB_USERNAME"))
+    parser.add_argument("--password", default=os.getenv("VB_PASSWORD"))
     parser.add_argument("--model", dest="model_ids", action="append")
-    parser.add_argument("--receipt-id", dest="receipt_ids", type=int, action="append")
+    parser.add_argument("--receipt-id", dest="receipt_ids", action="append")
     parser.add_argument("--category")
     parser.add_argument("--max-source-confidence", type=int)
     parser.add_argument("--limit", type=int)
@@ -42,9 +45,19 @@ def request_payload(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     args = parse_args()
     endpoint = f"{args.api_url.rstrip('/')}/api/v1/benchmarks"
+    if bool(args.username) != bool(args.password):
+        print("Provide both --username and --password (or VB_USERNAME and VB_PASSWORD).", file=sys.stderr)
+        return 2
     try:
-        response = httpx.post(endpoint, json=request_payload(args), timeout=30)
-        response.raise_for_status()
+        with httpx.Client(timeout=30) as client:
+            if args.username:
+                login = client.post(
+                    f"{args.api_url.rstrip('/')}/api/v1/auth/login",
+                    json={"username": args.username, "password": args.password},
+                )
+                login.raise_for_status()
+            response = client.post(endpoint, json=request_payload(args))
+            response.raise_for_status()
     except httpx.HTTPError as error:
         print(f"Unable to queue benchmark: {error}", file=sys.stderr)
         return 1
