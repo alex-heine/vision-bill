@@ -9,7 +9,23 @@
 		"queue": "Queue",
 		"receipts": "Receipts",
 		"benchmarks": "Benchmarks",
-		"settings": "Settings"
+		"settings": "Settings",
+		"signedInAs": "Signed in as {name}",
+		"signOut": "Sign out"
+	},
+	"login": {
+		"title": "Sign in",
+		"username": "Username",
+		"password": "Password",
+		"signIn": "Sign in",
+		"signingIn": "Signing in…",
+		"createAccount": "Create account",
+		"creating": "Creating account…",
+		"noAccount": "No account yet?",
+		"haveAccount": "Already have an account?",
+		"switchToRegister": "Create one",
+		"switchToLogin": "Sign in",
+		"error": "Something went wrong."
 	},
 	"theme": {
 		"light": "Light",

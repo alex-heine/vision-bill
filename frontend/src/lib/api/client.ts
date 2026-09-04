@@ -7,10 +7,22 @@ import type {
 	ReceiptRow,
 	ReceiptWithDetails,
 	ReceiptWrite,
+	User,
 	UiConfig
 } from '$lib/types';
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '/api/v1').replace(/\/$/, '');
+
+/**
+ * Handler invoked on any 401 from a protected (non-`/auth/`) endpoint. Wired up
+ * by `$lib/auth` to drop the session and redirect to the login page. Kept as a
+ * swappable callback so this module never imports the session store (no cycle).
+ */
+let unauthorizedHandler: (() => void) | null = null;
+
+export function onUnauthorized(handler: () => void): void {
+	unauthorizedHandler = handler;
+}
 
 export class ApiError extends Error {
 	status: number;
@@ -28,12 +40,19 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	let response: Response;
 	try {
-		response = await fetch(`${API_BASE}${path}`, init);
+		// same-origin so the HttpOnly session cookie is sent automatically.
+		response = await fetch(`${API_BASE}${path}`, { credentials: 'same-origin', ...init });
 	} catch {
 		throw new ApiError(0, 'Network error');
 	}
 
 	if (!response.ok) {
+		// A 401 on a protected endpoint means the session expired: bounce to
+		// login. The /auth/ endpoints 401 for bad credentials, not an expired
+		// session, so they are excluded.
+		if (response.status === 401 && !path.startsWith('/auth/')) {
+			unauthorizedHandler?.();
+		}
 		let detail = `${response.status} ${response.statusText}`;
 		try {
 			const body: unknown = await response.json();
@@ -86,6 +105,34 @@ export const api = {
 		return request<UiConfig>('/system/ui-config');
 	},
 
+	/** GET /auth/me returns the current user (401 when the session is gone). */
+	me(): Promise<User> {
+		return request<User>('/auth/me');
+	},
+
+	/** POST /auth/login authenticates and sets the session cookie. */
+	login(username: string, password: string): Promise<User> {
+		return request<User>('/auth/login', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ username, password })
+		});
+	},
+
+	/** POST /auth/register creates an account (403 if registration is disabled). */
+	register(username: string, password: string): Promise<User> {
+		return request<User>('/auth/register', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ username, password })
+		});
+	},
+
+	/** POST /auth/logout clears the session cookie. */
+	logout(): Promise<void> {
+		return request<void>('/auth/logout', { method: 'POST' });
+	},
+
 	listImages(filters: ImageListFilters = {}): Promise<ImageRow[]> {
 		return request<ImageRow[]>(
 			`/images${toQueryString({
@@ -96,11 +143,11 @@ export const api = {
 		);
 	},
 
-	getImage(id: number): Promise<ImageRow> {
+	getImage(id: string): Promise<ImageRow> {
 		return request<ImageRow>(`/images/${id}`);
 	},
 
-	deleteImage(id: number): Promise<void> {
+	deleteImage(id: string): Promise<void> {
 		return request<void>(`/images/${id}`, { method: 'DELETE' });
 	},
 
@@ -109,7 +156,7 @@ export const api = {
 	},
 
 	/** URL for <img> tags / opening in a new tab (not used via fetch). */
-	imageFileUrl(id: number): string {
+	imageFileUrl(id: string): string {
 		return `${API_BASE}/images/${id}/file`;
 	},
 
@@ -126,12 +173,12 @@ export const api = {
 		);
 	},
 
-	getReceipt(id: number): Promise<ReceiptWithDetails> {
+	getReceipt(id: string): Promise<ReceiptWithDetails> {
 		return request<ReceiptWithDetails>(`/receipts/${id}`);
 	},
 
 	/** PUT /receipts/{id} returns the updated receipt row (without line items). */
-	updateReceipt(id: number, body: ReceiptWrite): Promise<ReceiptRow> {
+	updateReceipt(id: string, body: ReceiptWrite): Promise<ReceiptRow> {
 		return request<ReceiptRow>(`/receipts/${id}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
@@ -140,12 +187,12 @@ export const api = {
 	},
 
 	/** POST /receipts/{id}/verify returns the verified receipt row (409 if already verified). */
-	verifyReceipt(id: number): Promise<ReceiptRow> {
+	verifyReceipt(id: string): Promise<ReceiptRow> {
 		return request<ReceiptRow>(`/receipts/${id}/verify`, { method: 'POST' });
 	},
 
 	/** DELETE /receipts/{id} removes the receipt (and its image). 409 if a benchmark references it. */
-	deleteReceipt(id: number): Promise<void> {
+	deleteReceipt(id: string): Promise<void> {
 		return request<void>(`/receipts/${id}`, { method: 'DELETE' });
 	},
 

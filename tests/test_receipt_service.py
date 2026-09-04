@@ -5,6 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 from fastapi import UploadFile
@@ -18,6 +19,10 @@ from vision_bill.service.receipt_service import ReceiptService
 
 ServiceContext = tuple[ReceiptService, MagicMock, MagicMock, MagicMock]
 DelegationContext = tuple[ReceiptService, MagicMock, MagicMock]
+RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000002")
+IMAGE_ID = UUID("00000000-0000-4000-8000-000000000003")
+OTHER_IMAGE_ID = UUID("00000000-0000-4000-8000-000000000004")
 
 
 @pytest.fixture
@@ -299,7 +304,7 @@ def _make_receipt() -> Receipt:
 
 def _make_row(**overrides: object) -> ReceiptRow:
     base: dict[str, Any] = {
-        "id": 1,
+        "id": RECEIPT_ID,
         "confidence": 95,
         "merchant_name": "Test Store",
         "merchant_address": "123 Main St",
@@ -416,10 +421,12 @@ async def test_persist_receipt_delegates(delegation_context: DelegationContext) 
     row = _make_row()
     mock_db.persist_receipt.return_value = row
 
-    result = await service.persist_receipt(receipt, image_id=5, status="verified", verified=True)
+    result = await service.persist_receipt(
+        receipt, image_id=IMAGE_ID, status="verified", verified=True
+    )
 
     mock_db.persist_receipt.assert_awaited_once_with(
-        receipt, image_id=5, status="verified", verified=True
+        receipt, image_id=IMAGE_ID, status="verified", verified=True, user_id=None
     )
     assert result is row
 
@@ -428,12 +435,14 @@ async def test_persist_receipt_delegates(delegation_context: DelegationContext) 
 async def test_get_receipt_by_id_delegates(delegation_context: DelegationContext) -> None:
     """get_receipt_by_id should delegate with the receipt id."""
     service, mock_db, _ = delegation_context
-    row = _make_row(id=42)
+    row = _make_row(id=RECEIPT_ID)
     mock_db.get_receipt_by_id.return_value = row
 
-    result = await service.get_receipt_by_id(42)
+    result = await service.get_receipt_by_id(RECEIPT_ID)
 
-    mock_db.get_receipt_by_id.assert_awaited_once_with(42)
+    mock_db.get_receipt_by_id.assert_awaited_once_with(
+        RECEIPT_ID, user_id=None, can_see_all=False
+    )
     assert result is row
 
 
@@ -441,13 +450,23 @@ async def test_get_receipt_by_id_delegates(delegation_context: DelegationContext
 async def test_list_receipts_delegates(delegation_context: DelegationContext) -> None:
     """list_receipts should delegate with limit and offset."""
     service, mock_db, _ = delegation_context
-    rows: list[ReceiptRow] = [_make_row(id=1), _make_row(id=2)]
+    rows: list[ReceiptRow] = [
+        _make_row(id=RECEIPT_ID),
+        _make_row(id=OTHER_RECEIPT_ID),
+    ]
     mock_db.list_receipts.return_value = rows
 
     result = await service.list_receipts(limit=10, offset=5)
 
     mock_db.list_receipts.assert_awaited_once_with(
-        limit=10, offset=5, status=None, date_from=None, date_to=None, search=None
+        limit=10,
+        offset=5,
+        status=None,
+        date_from=None,
+        date_to=None,
+        search=None,
+        user_id=None,
+        can_see_all=False,
     )
     assert result is rows
 
@@ -460,9 +479,11 @@ async def test_get_receipt_with_details_delegates(
     service, mock_db, _ = delegation_context
     mock_db.get_receipt_with_details.return_value = None
 
-    result = await service.get_receipt_with_details(7)
+    result = await service.get_receipt_with_details(RECEIPT_ID)
 
-    mock_db.get_receipt_with_details.assert_awaited_once_with(7)
+    mock_db.get_receipt_with_details.assert_awaited_once_with(
+        RECEIPT_ID, user_id=None, can_see_all=False
+    )
     assert result is None
 
 
@@ -474,9 +495,11 @@ async def test_update_receipt_delegates(delegation_context: DelegationContext) -
     row = _make_row()
     mock_db.update_receipt.return_value = row
 
-    result = await service.update_receipt(1, receipt)
+    result = await service.update_receipt(RECEIPT_ID, receipt)
 
-    mock_db.update_receipt.assert_awaited_once_with(1, receipt)
+    mock_db.update_receipt.assert_awaited_once_with(
+        RECEIPT_ID, receipt, user_id=None, can_see_all=False
+    )
     assert result is row
 
 
@@ -487,9 +510,11 @@ async def test_verify_receipt_delegates(delegation_context: DelegationContext) -
     row = _make_row(status="verified")
     mock_db.verify_receipt.return_value = row
 
-    result = await service.verify_receipt(1)
+    result = await service.verify_receipt(RECEIPT_ID)
 
-    mock_db.verify_receipt.assert_awaited_once_with(1)
+    mock_db.verify_receipt.assert_awaited_once_with(
+        RECEIPT_ID, user_id=None, can_see_all=False
+    )
     assert result is row
 
 
@@ -571,7 +596,7 @@ async def test_create_tag_too_long_raises(delegation_context: DelegationContext)
 
 def _make_image_row(**overrides: object) -> ImageRow:
     base: dict[str, Any] = {
-        "id": 11,
+        "id": IMAGE_ID,
         "original_filename": "a.png",
         "media_type": "image/png",
         "size_bytes": 123,
@@ -609,6 +634,7 @@ async def test_store_image_delegates(delegation_context: DelegationContext) -> N
         media_type="image/png",
         size_bytes=123,
         status="pending",
+        user_id=None,
         bypass_review=True,
     )
     assert result is row
@@ -618,12 +644,14 @@ async def test_store_image_delegates(delegation_context: DelegationContext) -> N
 async def test_get_image_by_id_delegates(delegation_context: DelegationContext) -> None:
     """get_image_by_id should delegate with the image id."""
     service, _, mock_image_db = delegation_context
-    row = _make_image_row(id=42)
+    row = _make_image_row(id=IMAGE_ID)
     mock_image_db.get_image_by_id.return_value = row
 
-    result = await service.get_image_by_id(42)
+    result = await service.get_image_by_id(IMAGE_ID)
 
-    mock_image_db.get_image_by_id.assert_awaited_once_with(42)
+    mock_image_db.get_image_by_id.assert_awaited_once_with(
+        IMAGE_ID, user_id=None, can_see_all=False
+    )
     assert result is row
 
 
@@ -631,7 +659,10 @@ async def test_get_image_by_id_delegates(delegation_context: DelegationContext) 
 async def test_list_pending_images_delegates(delegation_context: DelegationContext) -> None:
     """list_pending_images should delegate to the ImageDB provider."""
     service, _, mock_image_db = delegation_context
-    rows: list[ImageRow] = [_make_image_row(id=1), _make_image_row(id=2, status="failed")]
+    rows: list[ImageRow] = [
+        _make_image_row(id=IMAGE_ID),
+        _make_image_row(id=OTHER_IMAGE_ID, status="failed"),
+    ]
     mock_image_db.list_pending_images.return_value = rows
 
     result = await service.list_pending_images()
@@ -645,9 +676,9 @@ async def test_mark_image_analyzed_delegates(delegation_context: DelegationConte
     """mark_image_analyzed should delegate to ImageDB.mark_analyzed."""
     service, _, mock_image_db = delegation_context
 
-    await service.mark_image_analyzed(11, 7)
+    await service.mark_image_analyzed(IMAGE_ID, RECEIPT_ID)
 
-    mock_image_db.mark_analyzed.assert_awaited_once_with(11, 7)
+    mock_image_db.mark_analyzed.assert_awaited_once_with(IMAGE_ID, RECEIPT_ID)
 
 
 @pytest.mark.asyncio
@@ -655,9 +686,9 @@ async def test_mark_image_failed_delegates(delegation_context: DelegationContext
     """mark_image_failed should delegate to ImageDB.mark_failed."""
     service, _, mock_image_db = delegation_context
 
-    await service.mark_image_failed(11, "boom")
+    await service.mark_image_failed(IMAGE_ID, "boom")
 
-    mock_image_db.mark_failed.assert_awaited_once_with(11, "boom")
+    mock_image_db.mark_failed.assert_awaited_once_with(IMAGE_ID, "boom")
 
 
 @pytest.mark.asyncio
@@ -665,9 +696,9 @@ async def test_update_image_path_delegates(delegation_context: DelegationContext
     """update_image_path should delegate to the ImageDB provider."""
     service, _, mock_image_db = delegation_context
 
-    await service.update_image_path(11, "/save/b.png")
+    await service.update_image_path(IMAGE_ID, "/save/b.png")
 
-    mock_image_db.update_image_path.assert_awaited_once_with(11, "/save/b.png")
+    mock_image_db.update_image_path.assert_awaited_once_with(IMAGE_ID, "/save/b.png")
 
 
 @pytest.mark.asyncio
@@ -675,6 +706,6 @@ async def test_delete_image_row_delegates(delegation_context: DelegationContext)
     """delete_image_row should delegate to ImageDB.delete_image."""
     service, _, mock_image_db = delegation_context
 
-    await service.delete_image_row(11)
+    await service.delete_image_row(IMAGE_ID)
 
-    mock_image_db.delete_image.assert_awaited_once_with(11)
+    mock_image_db.delete_image.assert_awaited_once_with(IMAGE_ID)

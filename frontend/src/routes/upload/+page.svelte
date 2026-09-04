@@ -20,7 +20,7 @@
 	let bypassReview = $state(false);
 	let bypassReviewDefaultApplied = $state(false);
 	let uploading = $state(false);
-	let queued: { image_id: number; warning?: string } | null = $state(null);
+	let queued: { image_id: string; warning?: string } | null = $state(null);
 	let uploadError = $state('');
 
 	const uiConfig = createQuery(

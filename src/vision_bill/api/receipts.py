@@ -1,12 +1,14 @@
 import logging
 from datetime import date
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
 from ..security.dependencies import get_current_user
+from ..security.models import User
 from ..service.image_service import ImageService
 from ..service.receipt_service import ReceiptReferencedError, ReceiptService
 from .helper.helper import get_image_service, get_receipt_service
@@ -33,12 +35,13 @@ async def list_receipts(
         None, description="Case-insensitive match on merchant name or receipt number"
     ),
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> list[ReceiptRow]:
     """List persisted receipts (the collection resource).
 
     Optional filters: ``status`` (comma-separated), an inclusive
     ``date_from``/``date_to`` range, and ``search`` over merchant name or
-    receipt number.
+    receipt number. Non-see-all users only list their own receipts.
     """
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -50,17 +53,22 @@ async def list_receipts(
         date_from=date_from,
         date_to=date_to,
         search=search,
+        user_id=current_user.id,
+        can_see_all=current_user.can_see_all,
     )
 
 
 @router.get("/{receipt_id}")
 async def get_receipt(
-    receipt_id: int,
+    receipt_id: UUID,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ReceiptWithDetails:
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
-    details = await receipt_service.get_receipt_with_details(receipt_id)
+    details = await receipt_service.get_receipt_with_details(
+        receipt_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
     if details is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
     return details
@@ -68,13 +76,16 @@ async def get_receipt(
 
 @router.put("/{receipt_id}")
 async def update_receipt(
-    receipt_id: int,
+    receipt_id: UUID,
     receipt: Receipt,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ReceiptRow:
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
-    row = await receipt_service.update_receipt(receipt_id, receipt)
+    row = await receipt_service.update_receipt(
+        receipt_id, receipt, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
     return row
@@ -82,19 +93,23 @@ async def update_receipt(
 
 @router.post("/{receipt_id}/verify")
 async def verify_receipt(
-    receipt_id: int,
+    receipt_id: UUID,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     image_service: ImageService = Depends(get_image_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ReceiptRow:
     """Verify a receipt, moving its image from tmp to permanent storage.
 
     Flow: receipt -> image row -> store_perm_image -> update_image_path ->
     verify_receipt. The path now lives on the images row, not the receipt.
+    Non-see-all users may only verify their own receipts.
     """
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
 
-    row = await receipt_service.get_receipt_by_id(receipt_id)
+    row = await receipt_service.get_receipt_by_id(
+        receipt_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
 
@@ -102,13 +117,17 @@ async def verify_receipt(
         raise HTTPException(status_code=409, detail="Receipt already verified")
 
     if row.image_id is not None:
-        image = await receipt_service.get_image_by_id(row.image_id)
+        image = await receipt_service.get_image_by_id(
+            row.image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+        )
         if image is not None and image.image_path:
             new_path = image_service.store_perm_image(Path(image.image_path), receipt_id)
             if new_path is not None:
                 await receipt_service.update_image_path(row.image_id, str(new_path))
 
-    verified = await receipt_service.verify_receipt(receipt_id)
+    verified = await receipt_service.verify_receipt(
+        receipt_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
     if verified is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
     return verified
@@ -116,16 +135,22 @@ async def verify_receipt(
 
 @router.delete("/{receipt_id}")
 async def delete_receipt(
-    receipt_id: int,
+    receipt_id: UUID,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     image_service: ImageService = Depends(get_image_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, object]:
-    """Delete a receipt (its line items and taxes cascade) plus its stored image."""
+    """Delete a receipt (its line items and taxes cascade) plus its stored image.
+
+    Non-see-all users may only delete their own receipts.
+    """
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
 
     try:
-        row = await receipt_service.delete_receipt(receipt_id)
+        row = await receipt_service.delete_receipt(
+            receipt_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+        )
     except ReceiptReferencedError:
         raise HTTPException(
             status_code=409,
@@ -135,7 +160,9 @@ async def delete_receipt(
         raise HTTPException(status_code=404, detail="Receipt not found")
 
     if row.image_id is not None:
-        image = await receipt_service.get_image_by_id(row.image_id)
+        image = await receipt_service.get_image_by_id(
+            row.image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+        )
         if image is not None:
             await receipt_service.delete_image_row(image.id)
             if image.image_path:

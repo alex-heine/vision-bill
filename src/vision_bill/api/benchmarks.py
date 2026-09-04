@@ -1,6 +1,7 @@
 """HTTP endpoints for durable, local LLM benchmark runs."""
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
@@ -16,11 +17,11 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 class BenchmarkReevaluation(BaseModel):
     """A transient evaluation of one receipt with one model."""
 
-    receipt_id: int = Field(ge=1)
+    receipt_id: UUID
     model_id: str = Field(min_length=1)
 
 
-def _location(run_id: int) -> str:
+def _location(run_id: UUID) -> str:
     return f"/api/v1/benchmarks/{run_id}"
 
 
@@ -52,7 +53,7 @@ async def list_benchmark_runs(
 
 @router.get("/{run_id}", response_model=BenchmarkStatus)
 async def get_benchmark_status(
-    run_id: int,
+    run_id: UUID,
     benchmark_service: BenchmarkService = Depends(get_benchmark_service),  # noqa: B008
 ) -> BenchmarkStatus:
     """Get live queue state, selected IDs, and aggregate model summaries."""
@@ -64,7 +65,7 @@ async def get_benchmark_status(
 
 @router.post("/{run_id}/reevaluate")
 async def reevaluate_receipt(
-    run_id: int,
+    run_id: UUID,
     request: BenchmarkReevaluation,
     benchmark_service: BenchmarkService = Depends(get_benchmark_service),  # noqa: B008
 ) -> dict[str, Any]:

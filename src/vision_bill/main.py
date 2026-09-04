@@ -51,7 +51,7 @@ async def bootstrap_admin(user_db: UserDB, settings: Settings) -> None:
         logger.info("Bootstrap user '%s' already exists - skipping", username)
         return
     await user_db.set_owner_of_orphan_rows(admin.id)
-    logger.info("Bootstrapped first admin user '%s' (id=%d)", username, admin.id)
+    logger.info("Bootstrapped first admin user '%s' (id=%s)", username, admin.id)
 
 
 # ── Startup / shutdown handlers ──────────────────────────────────────

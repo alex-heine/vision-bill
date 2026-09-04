@@ -139,7 +139,7 @@
 
 	let form = $state<EditorForm>(initialForm());
 	let snapshot = $state<EditorForm>(initialForm());
-	let initializedReceiptId: number | undefined;
+	let initializedReceiptId: string | undefined;
 
 	// Tag vocabulary (the <select> source), fetched once per editor mount.
 	const tagList = createQuery(

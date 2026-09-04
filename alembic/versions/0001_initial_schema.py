@@ -19,9 +19,19 @@ down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+CREATE_USERS_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    username        VARCHAR(100)  NOT NULL UNIQUE,
+    hashed_password TEXT          NOT NULL,
+    is_admin        BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ   DEFAULT now()
+);
+"""
+
 CREATE_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS receipts (
-    id              SERIAL PRIMARY KEY,
+    id              UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     confidence      SMALLINT        NOT NULL DEFAULT 0,
     merchant_name   VARCHAR(255)    NOT NULL,
     merchant_address TEXT,
@@ -39,14 +49,15 @@ CREATE TABLE IF NOT EXISTS receipts (
                     CHECK (status IN ('unverified', 'verified')),
     verified        BOOLEAN         NOT NULL DEFAULT FALSE,
     category        VARCHAR(50)     NOT NULL DEFAULT 'other',
-    created_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    user_id         UUID REFERENCES users(id) ON DELETE CASCADE
 );
 """
 
 CREATE_LINE_ITEMS_SQL = """
 CREATE TABLE IF NOT EXISTS line_items (
-    id          SERIAL PRIMARY KEY,
-    receipt_id  INT NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_id  UUID NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
     description VARCHAR(255)    NOT NULL,
     quantity    NUMERIC(10,4)   NOT NULL,
     unit_price  NUMERIC(14,2)   NOT NULL,
@@ -58,8 +69,8 @@ CREATE TABLE IF NOT EXISTS line_items (
 
 CREATE_TAXES_SQL = """
 CREATE TABLE IF NOT EXISTS taxes (
-    id         SERIAL PRIMARY KEY,
-    receipt_id INT NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_id UUID NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
     name       VARCHAR(100)   NOT NULL,
     rate       NUMERIC(6,4),
     amount     NUMERIC(14,2)  NOT NULL
@@ -68,7 +79,7 @@ CREATE TABLE IF NOT EXISTS taxes (
 
 CREATE_IMAGES_SQL = """
 CREATE TABLE IF NOT EXISTS images (
-    id                SERIAL PRIMARY KEY,
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     original_filename VARCHAR(255),
     media_type        VARCHAR(100),
     size_bytes        BIGINT,
@@ -76,21 +87,22 @@ CREATE TABLE IF NOT EXISTS images (
     status            VARCHAR(20) NOT NULL DEFAULT 'pending'
                       CHECK (status IN ('pending', 'analyzed', 'failed')),
     error             TEXT,
-    receipt_id        INT REFERENCES receipts(id) ON DELETE SET NULL,
+    receipt_id        UUID REFERENCES receipts(id) ON DELETE SET NULL,
     bypass_review     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    analyzed_at       TIMESTAMP WITH TIME ZONE
+    analyzed_at       TIMESTAMP WITH TIME ZONE,
+    user_id           UUID REFERENCES users(id) ON DELETE CASCADE
 );
 """
 
 ADD_RECEIPT_IMAGE_ID_SQL = (
     "ALTER TABLE receipts ADD COLUMN image_id "
-    "INT REFERENCES images(id) ON DELETE SET NULL;"
+    "UUID REFERENCES images(id) ON DELETE SET NULL;"
 )
 
 CREATE_BENCHMARK_RUNS_SQL = """
 CREATE TABLE IF NOT EXISTS benchmark_runs (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     status VARCHAR(30) NOT NULL DEFAULT 'queued',
     model_ids JSONB NOT NULL,
     receipt_ids JSONB NOT NULL,
@@ -110,9 +122,9 @@ CREATE TABLE IF NOT EXISTS benchmark_runs (
 
 CREATE_BENCHMARK_TASKS_SQL = """
 CREATE TABLE IF NOT EXISTS benchmark_tasks (
-    run_id INTEGER NOT NULL REFERENCES benchmark_runs(id) ON DELETE CASCADE,
+    run_id UUID NOT NULL REFERENCES benchmark_runs(id) ON DELETE CASCADE,
     model_id TEXT NOT NULL,
-    receipt_id INTEGER NOT NULL REFERENCES receipts(id),
+    receipt_id UUID NOT NULL REFERENCES receipts(id),
     status VARCHAR(30) NOT NULL DEFAULT 'queued',
     attempts INTEGER NOT NULL DEFAULT 0,
     leased_until TIMESTAMPTZ,
@@ -124,7 +136,7 @@ CREATE TABLE IF NOT EXISTS benchmark_tasks (
 
 CREATE_BENCHMARK_SUMMARIES_SQL = """
 CREATE TABLE IF NOT EXISTS benchmark_summaries (
-    run_id INTEGER NOT NULL REFERENCES benchmark_runs(id) ON DELETE CASCADE,
+    run_id UUID NOT NULL REFERENCES benchmark_runs(id) ON DELETE CASCADE,
     model_id TEXT NOT NULL,
     model_digest TEXT,
     completed INTEGER NOT NULL DEFAULT 0,
@@ -140,8 +152,42 @@ CREATE TABLE IF NOT EXISTS benchmark_summaries (
 );
 """
 
+CREATE_TAGS_SQL = """
+CREATE TABLE IF NOT EXISTS tags (
+    id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100) NOT NULL UNIQUE
+);
+"""
+
+SEED_TAGS_SQL = """
+INSERT INTO tags (name) VALUES
+    ('alcohol'),
+    ('beverage'),
+    ('coffee'),
+    ('food'),
+    ('fresh'),
+    ('household'),
+    ('hygiene'),
+    ('office'),
+    ('electronics'),
+    ('gift'),
+    ('pet'),
+    ('travel'),
+    ('subscription'),
+    ('service'),
+    ('other')
+ON CONFLICT (name) DO NOTHING;
+"""
+
+CREATE_RECEIPT_USER_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS ix_receipts_user_id ON receipts (user_id);"
+)
+
+CREATE_IMAGE_USER_INDEX_SQL = "CREATE INDEX IF NOT EXISTS ix_images_user_id ON images (user_id);"
+
 
 def upgrade() -> None:
+    op.execute(CREATE_USERS_SQL)
     op.execute(CREATE_RECEIPTS_SQL)
     op.execute(CREATE_LINE_ITEMS_SQL)
     op.execute(CREATE_TAXES_SQL)
@@ -150,9 +196,16 @@ def upgrade() -> None:
     op.execute(CREATE_BENCHMARK_RUNS_SQL)
     op.execute(CREATE_BENCHMARK_TASKS_SQL)
     op.execute(CREATE_BENCHMARK_SUMMARIES_SQL)
+    op.execute(CREATE_TAGS_SQL)
+    op.execute(SEED_TAGS_SQL)
+    op.execute(CREATE_RECEIPT_USER_INDEX_SQL)
+    op.execute(CREATE_IMAGE_USER_INDEX_SQL)
 
 
 def downgrade() -> None:
+    op.execute("DROP INDEX IF EXISTS ix_images_user_id;")
+    op.execute("DROP INDEX IF EXISTS ix_receipts_user_id;")
+    op.execute("DROP TABLE IF EXISTS tags;")
     op.execute("DROP TABLE IF EXISTS benchmark_summaries;")
     op.execute("DROP TABLE IF EXISTS benchmark_tasks;")
     op.execute("DROP TABLE IF EXISTS benchmark_runs;")
@@ -161,3 +214,4 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS taxes;")
     op.execute("DROP TABLE IF EXISTS line_items;")
     op.execute("DROP TABLE IF EXISTS receipts;")
+    op.execute("DROP TABLE IF EXISTS users;")

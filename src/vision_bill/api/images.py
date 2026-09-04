@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -7,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from ..config import settings
 from ..model.db.image import ImageRow
 from ..security.dependencies import get_current_user
+from ..security.models import User
 from ..service.analysis_scheduler import AnalysisScheduler
 from ..service.image_service import ImageService, UnsupportedImageTypeError
 from ..service.receipt_service import ReceiptService
@@ -19,7 +21,7 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 PENDING_QUEUE_WARNING = "LLM provider not available – image queued for background analysis"
 
 
-def _location(image_id: int) -> str:
+def _location(image_id: UUID) -> str:
     """Absolute path to a single-image resource for the Location header."""
     return f"/api/v1/images/{image_id}"
 
@@ -31,6 +33,7 @@ async def upload_image(
     bypass_review: bool | None = Query(None),
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     image_service: ImageService = Depends(get_image_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> JSONResponse:
     """Create an image resource by uploading a receipt file.
 
@@ -74,6 +77,7 @@ async def upload_image(
         media_type=info.media_type,
         size_bytes=info.size_bytes,
         status="pending",
+        user_id=current_user.id,
         bypass_review=effective_bypass_review,
     )
 
@@ -82,7 +86,7 @@ async def upload_image(
             status_code=202,
             headers={"Location": _location(image_row.id)},
             content={
-                "image_id": image_row.id,
+                "image_id": str(image_row.id),
                 "status": "pending",
                 "warning": PENDING_QUEUE_WARNING,
             },
@@ -94,7 +98,11 @@ async def upload_image(
 
     if effective_bypass_review:
         row = await receipt_service.persist_receipt(
-            llm_response, image_id=image_row.id, status="verified", verified=True
+            llm_response,
+            image_id=image_row.id,
+            status="verified",
+            verified=True,
+            user_id=current_user.id,
         )
         await receipt_service.mark_image_analyzed(image_row.id, row.id)
         try:
@@ -103,11 +111,11 @@ async def upload_image(
                 await receipt_service.update_image_path(image_row.id, str(perm_path))
         except Exception:
             logger.exception(
-                "Failed to move bypass-reviewed image %d to permanent storage", image_row.id
+                "Failed to move bypass-reviewed image %s to permanent storage", image_row.id
             )
     else:
         row = await receipt_service.persist_receipt(
-            llm_response, image_id=image_row.id, status="unverified"
+            llm_response, image_id=image_row.id, status="unverified", user_id=current_user.id
         )
         await receipt_service.mark_image_analyzed(image_row.id, row.id)
 
@@ -115,9 +123,9 @@ async def upload_image(
         status_code=201,
         headers={"Location": _location(image_row.id)},
         content={
-            "image_id": image_row.id,
+            "image_id": str(image_row.id),
             "status": "analyzed",
-            "receipt_id": row.id,
+            "receipt_id": str(row.id),
             "original_filename": image_row.original_filename,
             "media_type": info.media_type,
             "size_bytes": info.size_bytes,
@@ -135,12 +143,19 @@ async def list_images(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> list[ImageRow]:
     """List image resources, newest first. Filter with ``?status=pending,failed``."""
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
     statuses = [s.strip() for s in status.split(",") if s.strip()] if status else None
-    return await receipt_service.list_images(status=statuses, limit=limit, offset=offset)
+    return await receipt_service.list_images(
+        status=statuses,
+        limit=limit,
+        offset=offset,
+        user_id=current_user.id,
+        can_see_all=current_user.can_see_all,
+    )
 
 
 @router.post("/analyze")
@@ -157,13 +172,16 @@ async def analyze_pending(
 
 @router.get("/{image_id}")
 async def get_image(
-    image_id: int,
+    image_id: UUID,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ImageRow:
     """Fetch a single image resource by id."""
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
-    image = await receipt_service.get_image_by_id(image_id)
+    image = await receipt_service.get_image_by_id(
+        image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
     return image
@@ -171,13 +189,16 @@ async def get_image(
 
 @router.get("/{image_id}/file")
 async def get_image_file(
-    image_id: int,
+    image_id: UUID,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> FileResponse:
     """Stream the stored image file behind an image resource."""
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
-    image = await receipt_service.get_image_by_id(image_id)
+    image = await receipt_service.get_image_by_id(
+        image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
     if image is None or not image.image_path:
         raise HTTPException(status_code=404, detail="Image file not found")
     path = Path(image.image_path)
@@ -188,15 +209,18 @@ async def get_image_file(
 
 @router.delete("/{image_id}")
 async def delete_image(
-    image_id: int,
+    image_id: UUID,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     image_service: ImageService = Depends(get_image_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, object]:
     """Remove a queued (pending or failed) image resource and its on-disk file."""
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
 
-    image = await receipt_service.get_image_by_id(image_id)
+    image = await receipt_service.get_image_by_id(
+        image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
     if image.status not in ("pending", "failed"):

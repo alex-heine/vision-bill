@@ -16,20 +16,21 @@ export type PaymentMethod =
 	'cash' | 'credit_card' | 'debit_card' | 'mobile_payment' | 'check' | 'other' | 'unknown';
 
 export interface ImageRow {
-	id: number;
+	id: string;
 	original_filename: string | null;
 	media_type: string | null;
 	size_bytes: number | null;
 	image_path: string | null;
 	status: ImageStatus;
 	error: string | null;
-	receipt_id: number | null;
+	receipt_id: string | null;
+	user_id: string | null;
 	created_at: string | null;
 	analyzed_at: string | null;
 }
 
 export interface ReceiptRow {
-	id: number;
+	id: string;
 	confidence: number;
 	merchant_name: string;
 	merchant_address: string | null;
@@ -49,13 +50,14 @@ export interface ReceiptRow {
 	/** ISO date, YYYY-MM-DD */
 	created_at: string | null;
 	status: ReceiptStatus;
-	image_id: number | null;
+	image_id: string | null;
 	verified: boolean;
+	user_id: string | null;
 }
 
 export interface LineItemRow {
-	id: number;
-	receipt_id: number;
+	id: string;
+	receipt_id: string;
 	description: string;
 	quantity: number;
 	unit_price: string;
@@ -65,8 +67,8 @@ export interface LineItemRow {
 }
 
 export interface TaxLineRow {
-	id: number;
-	receipt_id: number;
+	id: string;
+	receipt_id: string;
 	name: string;
 	rate: number | null;
 	amount: string;
@@ -81,9 +83,9 @@ export interface ReceiptWithDetails {
 
 /** Body for POST /images (file uploaded via FormData, model_id as query param). */
 export interface ImageCreated {
-	image_id: number;
+	image_id: string;
 	status: ImageStatus;
-	receipt_id?: number | null;
+	receipt_id?: string | null;
 	warning?: string;
 	original_filename?: string;
 	media_type?: string;
@@ -91,9 +93,18 @@ export interface ImageCreated {
 	image_path?: string;
 }
 
+/** Authenticated principal (mirrors the backend `User` model). */
+export interface User {
+	id: string;
+	username: string;
+	is_admin: boolean;
+	can_see_all: boolean;
+}
+
 /** Safe server-side defaults that affect browser workflow. */
 export interface UiConfig {
 	bypass_review_default: boolean;
+	registration_open: boolean;
 }
 
 export interface LineItemWrite {
@@ -134,9 +145,9 @@ export interface ReceiptWrite {
 
 /** One result of POST /images/analyze (backend PendingImageResult). */
 export interface PendingImageResult {
-	image_id: number;
+	image_id: string;
 	status: 'analyzed' | 'failed';
-	receipt_id?: number | null;
+	receipt_id?: string | null;
 	error?: string | null;
 }
 

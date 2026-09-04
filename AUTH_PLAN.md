@@ -6,27 +6,41 @@
 - Multi-user accounts (username + password), **Argon2id** package defaults (`m=64MiB, t=3, p=4`).
 - **Pepper always on:** effective pepper = `AUTH__PEPPER` if set, else `AUTH__SECRET_KEY`. Hash = `argon2id(hmac_sha256(pepper, password))`.
 - **Stateless HMAC session cookie** (HttpOnly, `SameSite=Lax`, 14-day max-age). No sessions table.
-- **Per-row `user_id` scoping** on `receipts` + `images`; a non-admin only sees/edits their own.
+- **UUID identifiers throughout:** every entity primary key and foreign key is a UUID; IDs are never sequential integers.
+- **Per-row `user_id` scoping** on `receipts` + `images`; callers without `can_see_all` only see/edit their own.
 - **Admin "see-all"** = `user.is_admin AND AUTH__ADMIN_CAN_SEE_ALL` (off by default).
 - **First admin** bootstrapped from env on startup (idempotent) + legacy orphan rows backfilled to that admin.
-- **Benchmarks admin-only.** Public endpoints: `/auth/*`, `/system/ui-config`.
+- **Admin features use `is_admin`:** benchmarks and settings are admin-only, independently of `can_see_all`. Public endpoints: `/auth/*`, `/system/ui-config`.
 
 > Each Part below is independently completable and verifiable. Prereqs list what it builds on.
+
+---
+
+## Current Checklist
+[✓] Gather context: read backend + frontend files to match existing patterns
+[✓] Part 2: AuthSettings + security helpers + tests
+[✓] Part 3: UserDB + models + dependencies + tests
+[✓] Part 4: api/auth.py + ReceiptService wiring + bootstrap + tests
+[✓] Part 5: protect routes (receipts/images/tags/llm) + benchmarks admin-only + ui-config registration_open + update existing API tests
+[✓] Part 6: per-user data scoping (rows, receipt_db, image_db, service, images.py, scheduler) + tests/test_scoping.py + update scheduler tests
+[✓] Part 7: frontend (client.ts, auth.ts, login page, layout guard, types) + build
+[✓] Part 8: frontend vitest for auth.ts, make lint + make test green, env docs
+[✓] Compile permission-gated actions list for the user
 
 ---
 
 ## Part 1 — Dependency + DB schema
 **Goal:** Add the hashing lib and create the auth schema. Backward-compatible: new `user_id` columns are nullable, so the app still boots unchanged.
 
-**Files:** `pyproject.toml`, `alembic/versions/0003_add_users.py`
+**Files:** `pyproject.toml`, `alembic/versions/0001_initial_schema.py`
 
 **Steps**
 1. Add `argon2-cffi` to `dependencies`; run `make setup` (uv sync → refresh `uv.lock`).
-2. Migration `0003` (`down_revision = "0002"`, hand-written `op.execute` like `0001`/`0002`):
-   - `CREATE TABLE users (id SERIAL PK, username VARCHAR(100) NOT NULL UNIQUE, hashed_password TEXT NOT NULL, is_admin BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT now())`.
-   - `ALTER TABLE receipts ADD COLUMN user_id INT REFERENCES users(id) ON DELETE CASCADE;` + index on `user_id`.
-   - `ALTER TABLE images ADD COLUMN user_id INT REFERENCES users(id) ON DELETE CASCADE;` + index on `user_id`.
-   - `downgrade()`: drop indexes → drop columns → drop table.
+2. The consolidated initial migration `0001` creates the complete schema:
+   - `users.id UUID PRIMARY KEY DEFAULT gen_random_uuid()` plus username, password hash, admin flag, and creation timestamp.
+   - Nullable UUID `user_id` foreign keys on `receipts` and `images`, both indexed.
+   - UUID primary and foreign keys for every other persisted entity.
+   - `downgrade()` drops indexes and tables in dependency order.
 3. `make migrate`.
 
 **Done when:** `uv run python -c "import argon2"` succeeds; `make migrate` succeeds; `users` table exists and `receipts`/`images` have a nullable `user_id`; existing app still boots.
@@ -45,7 +59,7 @@
    - `allow_registration: bool = True`, `admin_can_see_all: bool = False`, `pepper: str | None = None`
    - Add `auth: AuthSettings` to `Settings`.
 2. `password.py` — `PasswordHasher(type=Type.ID, memory_cost=65536, time_cost=3, parallelism=4)`; `hash_password`, `verify_password` (pepper = `settings.auth.pepper or settings.auth.secret_key`; pre-hash `hmac_sha256(pepper, password)` when pepper present, else hash the password directly; catch `argon2.exceptions.VerifyMismatchError` → `False`); `needs_rehash`.
-3. `session.py` — `create_token(user_id, max_age, secret) -> str` = `"{user_id}.{exp}.{hmac_sha256(secret, user_id.exp)}"`; `decode_token(token, secret) -> int | None` (constant-time compare; `None` on bad sig / expired / malformed).
+3. `session.py` — `create_token(user_id, max_age, secret) -> str` = `"{user_id}.{exp}.{hmac_sha256(secret, user_id.exp)}"`; `decode_token(token, secret) -> UUID | None` (constant-time compare; `None` on bad sig / expired / malformed).
 
 **Done when:** `tests/test_security.py` covers hash/verify round-trip, wrong-password `False`, pepper path, token sign/decode, tampered token → `None`, expired token → `None`; `make test` green for these.
 
@@ -59,7 +73,7 @@
 **Steps**
 1. `models.py` — `User(BaseModel)`: `id, username, is_admin, can_see_all` (`can_see_all` = resolved effective privilege).
 2. `user_db.py` — `UserDB` (pool pattern mirroring `ReceiptDB`): `create_user(username, hashed, is_admin)`, `get_user_by_username`, `get_user_by_id`, `count_users`, `set_owner_of_orphan_rows(user_id)`.
-3. `dependencies.py` — `get_current_user` (read cookie → `decode_token` → load `User` via `UserDB` → set `can_see_all = is_admin and settings.auth.admin_can_see_all`; raise `401` on any failure) and `require_admin` (raise `403` when `not user.can_see_all`). Add a `get_user_db(request)` helper in `helper.py`.
+3. `dependencies.py` — `get_current_user` (read cookie → `decode_token` → load `User` via `UserDB` → set `can_see_all = is_admin and settings.auth.admin_can_see_all`; raise `401` on any failure) and `require_admin` (raise `403` when `not user.is_admin`). Add a `get_user_db(request)` helper in `helper.py`.
 
 **Prereqs:** Parts 1–2.
 

@@ -4,6 +4,8 @@ No database is involved: these exercise the Argon2id hashing and HMAC session
 token logic directly.
 """
 
+from uuid import UUID
+
 from vision_bill.config import AuthSettings
 from vision_bill.security import (
     create_token,
@@ -16,6 +18,8 @@ from vision_bill.security.password import effective_pepper
 
 SECRET = "unit-test-secret-key"
 PASSWORD = "correct horse battery staple"
+USER_ID = UUID("00000000-0000-4000-8000-000000000042")
+OTHER_USER_ID = UUID("00000000-0000-4000-8000-000000000043")
 
 
 def _auth(secret_key: str = SECRET, pepper: str | None = None) -> AuthSettings:
@@ -83,35 +87,35 @@ def test_needs_rehash_false_for_current_parameters() -> None:
 
 
 def test_token_round_trip() -> None:
-    token = create_token(42, 3600, SECRET)
-    assert decode_token(token, SECRET) == 42
+    token = create_token(USER_ID, 3600, SECRET)
+    assert decode_token(token, SECRET) == USER_ID
 
 
 def test_token_rejects_wrong_secret() -> None:
-    token = create_token(42, 3600, SECRET)
+    token = create_token(USER_ID, 3600, SECRET)
     assert decode_token(token, "a-different-secret") is None
 
 
 def test_token_rejects_tampered_user_id() -> None:
-    token = create_token(42, 3600, SECRET)
+    token = create_token(USER_ID, 3600, SECRET)
     user_id_s, exp_s, sig = token.split(".")
-    forged = f"43.{exp_s}.{sig}"
+    forged = f"{OTHER_USER_ID}.{exp_s}.{sig}"
     assert decode_token(forged, SECRET) is None
 
 
 def test_token_rejects_tampered_signature() -> None:
-    token = create_token(42, 3600, SECRET)
+    token = create_token(USER_ID, 3600, SECRET)
     user_id_s, exp_s, _sig = token.split(".")
     forged = f"{user_id_s}.{exp_s}." + ("0" * 64)
     assert decode_token(forged, SECRET) is None
 
 
 def test_token_rejects_expired() -> None:
-    token = create_token(42, -1, SECRET)  # expiry in the past
+    token = create_token(USER_ID, -1, SECRET)  # expiry in the past
     assert decode_token(token, SECRET) is None
 
 
 def test_token_rejects_malformed() -> None:
     assert decode_token("", SECRET) is None
     assert decode_token("only.two", SECRET) is None
-    assert decode_token("not.an.int", SECRET) is None
+    assert decode_token("not.a.uuid", SECRET) is None

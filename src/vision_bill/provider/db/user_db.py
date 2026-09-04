@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Mapping
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 
@@ -8,7 +9,7 @@ from ...config import AuthSettings, PGSettings
 from ...security.models import User
 from ...security.password import verify_password
 
-# ── SQL (DML; DDL lives in alembic/versions/0003_add_users.py) ──
+# ── SQL (DML; DDL lives in alembic/versions/0001_initial_schema.py) ──
 
 CREATE_USER_SQL = """
     INSERT INTO users (username, hashed_password, is_admin)
@@ -99,7 +100,7 @@ class UserDB:
             return None
         return self._user_from_record(row)
 
-    async def get_user_by_id(self, user_id: int) -> User | None:
+    async def get_user_by_id(self, user_id: UUID) -> User | None:
         """Fetch a user by primary key, or ``None`` when absent."""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(GET_USER_BY_ID_SQL, user_id)
@@ -129,9 +130,9 @@ class UserDB:
             row = await conn.fetchrow(COUNT_USERS_SQL)
         return int(row["count"]) if row is not None else 0
 
-    async def set_owner_of_orphan_rows(self, user_id: int) -> None:
+    async def set_owner_of_orphan_rows(self, user_id: UUID) -> None:
         """Assign legacy receipts/images with no owner to ``user_id`` (idempotent)."""
-        logger.info("Backfilling orphan receipts/images to user %d", user_id)
+        logger.info("Backfilling orphan receipts/images to user %s", user_id)
         async with self.pool.acquire() as conn:
             await conn.execute(SET_ORPHAN_OWNER_RECEIPTS_SQL, user_id)
             await conn.execute(SET_ORPHAN_OWNER_IMAGES_SQL, user_id)

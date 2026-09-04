@@ -2,6 +2,7 @@
 
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 
@@ -17,6 +18,8 @@ from vision_bill.security import hash_password, verify_password
 from vision_bill.security.models import User
 
 PATCH_TARGET = "vision_bill.provider.db.user_db.asyncpg"
+USER_ID = UUID("00000000-0000-4000-8000-000000000001")
+OTHER_USER_ID = UUID("00000000-0000-4000-8000-000000000002")
 
 
 def _make_pool(conn: AsyncMock) -> MagicMock:
@@ -30,7 +33,9 @@ def _make_pool(conn: AsyncMock) -> MagicMock:
     return pool
 
 
-def _user_row(user_id: int = 1, username: str = "alice", is_admin: bool = False) -> dict[str, Any]:
+def _user_row(
+    user_id: UUID = USER_ID, username: str = "alice", is_admin: bool = False
+) -> dict[str, Any]:
     return {
         "id": user_id,
         "username": username,
@@ -54,7 +59,7 @@ async def test_user_create_fetch_verify_round_trip(db: UserDB, settings: Setting
 
     conn.fetchrow = AsyncMock(return_value=_user_row(username="alice", is_admin=True))
     created = await db.create_user("alice", hashed, is_admin=True)
-    assert created.id == 1
+    assert created.id == USER_ID
     assert created.username == "alice"
     assert created.is_admin is True
     assert conn.fetchrow.await_args.args[0] == CREATE_USER_SQL
@@ -83,7 +88,7 @@ async def test_get_user_by_id_not_found(db: UserDB) -> None:
     conn = AsyncMock()
     db._pool = _make_pool(conn)
     conn.fetchrow = AsyncMock(return_value=None)
-    assert await db.get_user_by_id(999) is None
+    assert await db.get_user_by_id(OTHER_USER_ID) is None
 
 
 @pytest.mark.asyncio
@@ -103,7 +108,7 @@ async def test_set_owner_of_orphan_rows(db: UserDB) -> None:
     conn = AsyncMock()
     db._pool = _make_pool(conn)
     conn.execute = AsyncMock()
-    await db.set_owner_of_orphan_rows(5)
+    await db.set_owner_of_orphan_rows(USER_ID)
     executed = [call.args for call in conn.execute.call_args_list]
-    assert (SET_ORPHAN_OWNER_RECEIPTS_SQL, 5) in executed
-    assert (SET_ORPHAN_OWNER_IMAGES_SQL, 5) in executed
+    assert (SET_ORPHAN_OWNER_RECEIPTS_SQL, USER_ID) in executed
+    assert (SET_ORPHAN_OWNER_IMAGES_SQL, USER_ID) in executed

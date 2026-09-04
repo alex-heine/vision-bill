@@ -1,7 +1,7 @@
 """FastAPI dependencies that resolve the authenticated user.
 
 ``get_current_user`` turns the signed session cookie into a :class:`User`;
-``require_admin`` gates admin-only (see-all) routes.
+``require_admin`` gates admin-only routes.
 """
 
 from fastapi import Depends, HTTPException, Request
@@ -43,7 +43,7 @@ async def get_current_user(request: Request) -> User:
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:  # noqa: B008
-    """Allow only users with the effective see-all (admin) privilege; else 403."""
-    if not user.can_see_all:
+    """Allow only administrators; otherwise raise 403."""
+    if not user.is_admin:
         raise HTTPException(status_code=403, detail="Administrator privileges required")
     return user

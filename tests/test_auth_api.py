@@ -4,6 +4,7 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,9 +21,16 @@ from vision_bill.security import create_token, hash_password
 from vision_bill.security.models import User
 
 AUTH_URL = "/api/v1/auth"
+USER_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 def _make_pool(conn: AsyncMock) -> MagicMock:
+    conn.transaction = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=None),
+            __aexit__=AsyncMock(return_value=None),
+        )
+    )
     pool = MagicMock()
     pool.acquire = MagicMock(
         return_value=AsyncMock(
@@ -42,7 +50,7 @@ def _make_provider() -> MagicMock:
 
 
 def _user_row(
-    id: int = 1,
+    id: UUID = USER_ID,
     username: str = "alice",
     is_admin: bool = False,
     hashed: str | None = None,
@@ -94,7 +102,7 @@ def _creds(username: str, password: str) -> dict[str, str]:
 
 def test_register_sets_cookie(auth_context: AuthContext) -> None:
     ctx = auth_context
-    ctx.conn.fetchrow = AsyncMock(side_effect=[None, _user_row(id=1, username="alice")])
+    ctx.conn.fetchrow = AsyncMock(side_effect=[None, _user_row(username="alice")])
     response = ctx.client.post(f"{AUTH_URL}/register", json=_creds("alice", "s3cret"))
     assert response.status_code == 201
     body = response.json()
@@ -105,7 +113,7 @@ def test_register_sets_cookie(auth_context: AuthContext) -> None:
 
 def test_register_duplicate_conflict(auth_context: AuthContext) -> None:
     ctx = auth_context
-    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(id=1, username="alice"))
+    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(username="alice"))
     response = ctx.client.post(f"{AUTH_URL}/register", json=_creds("alice", "s3cret"))
     assert response.status_code == 409
     assert "already taken" in response.json()["detail"]
@@ -120,7 +128,7 @@ def test_register_disabled_forbidden(settings: Settings, auth_context: AuthConte
 def test_login_success_sets_cookie(auth_context: AuthContext, settings: Settings) -> None:
     ctx = auth_context
     hashed = hash_password("s3cret", settings.auth)
-    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(id=1, username="alice", hashed=hashed))
+    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(username="alice", hashed=hashed))
     response = ctx.client.post(f"{AUTH_URL}/login", json=_creds("alice", "s3cret"))
     assert response.status_code == 200
     assert response.json()["username"] == "alice"
@@ -130,7 +138,7 @@ def test_login_success_sets_cookie(auth_context: AuthContext, settings: Settings
 def test_login_bad_password_401(auth_context: AuthContext, settings: Settings) -> None:
     ctx = auth_context
     hashed = hash_password("s3cret", settings.auth)
-    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(id=1, username="alice", hashed=hashed))
+    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(username="alice", hashed=hashed))
     response = ctx.client.post(f"{AUTH_URL}/login", json=_creds("alice", "wrong"))
     assert response.status_code == 401
     assert ctx.client.cookies.get("vb_session") is None
@@ -145,8 +153,8 @@ def test_login_unknown_user_401(auth_context: AuthContext) -> None:
 
 def test_me_with_valid_cookie(auth_context: AuthContext, settings: Settings) -> None:
     ctx = auth_context
-    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(id=1, username="alice", is_admin=True))
-    token = create_token(1, settings.auth.session_max_age_seconds, settings.auth.secret_key)
+    ctx.conn.fetchrow = AsyncMock(return_value=_user_row(username="alice", is_admin=True))
+    token = create_token(USER_ID, settings.auth.session_max_age_seconds, settings.auth.secret_key)
     ctx.client.cookies.set(settings.auth.session_cookie_name, token)
     response = ctx.client.get(f"{AUTH_URL}/me")
     assert response.status_code == 200
@@ -178,14 +186,16 @@ async def test_bootstrap_creates_one_admin_then_noop(settings: Settings) -> None
     # First boot: empty DB -> exactly one admin created, orphans backfilled.
     empty_db = MagicMock()
     empty_db.count_users = AsyncMock(return_value=0)
-    empty_db.create_user = AsyncMock(return_value=User(id=1, username="admin", is_admin=True))
+    empty_db.create_user = AsyncMock(
+        return_value=User(id=USER_ID, username="admin", is_admin=True)
+    )
     empty_db.set_owner_of_orphan_rows = AsyncMock()
     await main_module.bootstrap_admin(empty_db, settings)
     empty_db.create_user.assert_awaited_once()
     args, kwargs = empty_db.create_user.await_args
     assert args[0] == "admin"
     assert kwargs["is_admin"] is True
-    empty_db.set_owner_of_orphan_rows.assert_awaited_once_with(1)
+    empty_db.set_owner_of_orphan_rows.assert_awaited_once_with(USER_ID)
 
     # Next boot: a user already exists -> no create, no backfill.
     populated_db = MagicMock()

@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import asyncpg
 import pytest
@@ -27,6 +28,11 @@ from vision_bill.security.models import User
 JPEG_PATH = Path(__file__).parent / "data" / "bauhaus.jpeg"
 RECEIPTS_URL = "/api/v1/receipts"
 IMAGES_URL = "/api/v1/images"
+USER_ID = UUID("00000000-0000-4000-8000-000000000001")
+RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000002")
+OTHER_RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000003")
+IMAGE_ID = UUID("00000000-0000-4000-8000-000000000004")
+OTHER_IMAGE_ID = UUID("00000000-0000-4000-8000-000000000005")
 
 
 class ApiContext(NamedTuple):
@@ -36,6 +42,12 @@ class ApiContext(NamedTuple):
 
 
 def _make_pool(conn: AsyncMock) -> MagicMock:
+    conn.transaction = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=None),
+            __aexit__=AsyncMock(return_value=None),
+        )
+    )
     pool = MagicMock()
     pool.acquire = MagicMock(
         return_value=AsyncMock(
@@ -57,7 +69,7 @@ def _make_provider() -> MagicMock:
 
 def _receipt_row(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
-        "id": 1,
+        "id": RECEIPT_ID,
         "confidence": 88,
         "merchant_name": "Bauhaus",
         "merchant_address": "Main St 1",
@@ -81,7 +93,7 @@ def _receipt_row(**overrides: object) -> dict[str, object]:
     return base
 
 
-def _image_row(id: int = 11, **overrides: object) -> dict[str, object]:
+def _image_row(id: UUID = IMAGE_ID, **overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
         "id": id,
         "original_filename": "upload.jpeg",
@@ -144,7 +156,7 @@ def _patch_app(
 
 def _admin_user() -> User:
     # can_see_all=True keeps these (pre-scoping) assertions on the base SQL.
-    return User(id=1, username="tester", is_admin=True, can_see_all=True)
+    return User(id=USER_ID, username="tester", is_admin=True, can_see_all=True)
 
 
 @pytest.fixture
@@ -195,8 +207,8 @@ def test_upload_image_analyzes_and_returns_201(api_context: ApiContext, settings
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
-            _image_row(id=11, original_filename="bauhaus.jpeg"),
-            _receipt_row(id=7, image_id=11),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg"),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID),
         ]
     )
 
@@ -208,13 +220,13 @@ def test_upload_image_analyzes_and_returns_201(api_context: ApiContext, settings
 
     assert response.status_code == 201
     body = response.json()
-    assert body["image_id"] == 11
-    assert body["receipt_id"] == 7
+    assert body["image_id"] == str(IMAGE_ID)
+    assert body["receipt_id"] == str(RECEIPT_ID)
     assert body["status"] == "analyzed"
     assert body["media_type"] == "image/jpeg"
     assert body["size_bytes"] > 0
     assert body["original_filename"] == "bauhaus.jpeg"
-    assert response.headers["Location"] == f"{IMAGES_URL}/11"
+    assert response.headers["Location"] == f"{IMAGES_URL}/{IMAGE_ID}"
 
     tmp_files = list(Path(settings.images.tmp_dir).glob("*.png"))
     assert len(tmp_files) == 1
@@ -231,8 +243,10 @@ def test_upload_image_bypass_review_verifies_and_moves(
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
-            _image_row(id=11, original_filename="bauhaus.jpeg", bypass_review=True),
-            _receipt_row(id=7, image_id=11, status="verified", verified=True),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg", bypass_review=True),
+            _receipt_row(
+                id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
+            ),
         ]
     )
     ctx.conn.execute = AsyncMock()
@@ -245,13 +259,13 @@ def test_upload_image_bypass_review_verifies_and_moves(
 
     assert response.status_code == 201
     body = response.json()
-    assert body["image_id"] == 11
-    assert body["receipt_id"] == 7
+    assert body["image_id"] == str(IMAGE_ID)
+    assert body["receipt_id"] == str(RECEIPT_ID)
     assert body["status"] == "analyzed"
 
     # The tmp file has been moved into permanent storage under the receipt id.
     assert list(Path(settings.images.tmp_dir).glob("*.png")) == []
-    assert list(Path(settings.images.save_dir).glob("receipt_7*.png")) != []
+    assert list(Path(settings.images.save_dir).glob(f"receipt_{RECEIPT_ID}*.png")) != []
 
     update_calls = [
         call
@@ -259,7 +273,7 @@ def test_upload_image_bypass_review_verifies_and_moves(
         if call.args and call.args[0] == image_db_module.UPDATE_IMAGE_PATH_SQL
     ]
     assert len(update_calls) == 1
-    assert update_calls[0].args[1] == 11
+    assert update_calls[0].args[1] == IMAGE_ID
     assert str(Path(settings.images.save_dir)) in update_calls[0].args[2]
 
 
@@ -271,8 +285,10 @@ def test_upload_image_uses_configured_bypass_review_default(
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
-            _image_row(id=11, original_filename="bauhaus.jpeg", bypass_review=True),
-            _receipt_row(id=7, image_id=11, status="verified", verified=True),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg", bypass_review=True),
+            _receipt_row(
+                id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
+            ),
         ]
     )
 
@@ -295,8 +311,8 @@ def test_upload_image_explicit_false_overrides_configured_default(
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
-            _image_row(id=11, original_filename="bauhaus.jpeg"),
-            _receipt_row(id=7, image_id=11),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg"),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID),
         ]
     )
 
@@ -344,7 +360,7 @@ def test_upload_image_rejects_non_image(api_context: ApiContext) -> None:
 def test_upload_image_returns_202_when_no_models(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.provider.get_available_models = AsyncMock(return_value=[])
-    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=21))
+    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=IMAGE_ID))
 
     response = ctx.client.post(
         IMAGES_URL,
@@ -355,16 +371,16 @@ def test_upload_image_returns_202_when_no_models(api_context: ApiContext) -> Non
     assert response.status_code == 202
     body = response.json()
     assert body["status"] == "pending"
-    assert body["image_id"] == 21
+    assert body["image_id"] == str(IMAGE_ID)
     assert "warning" in body
-    assert response.headers["Location"] == f"{IMAGES_URL}/21"
+    assert response.headers["Location"] == f"{IMAGES_URL}/{IMAGE_ID}"
     ctx.provider.analyse_receipt_from_model.assert_not_awaited()
 
 
 def test_upload_image_returns_202_when_provider_unreachable(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.provider.check_connection = AsyncMock(return_value=False)
-    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=31))
+    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=IMAGE_ID))
 
     response = ctx.client.post(
         IMAGES_URL,
@@ -375,7 +391,7 @@ def test_upload_image_returns_202_when_provider_unreachable(api_context: ApiCont
     assert response.status_code == 202
     body = response.json()
     assert body["status"] == "pending"
-    assert body["image_id"] == 31
+    assert body["image_id"] == str(IMAGE_ID)
     assert "warning" in body
     ctx.provider.get_available_models.assert_not_awaited()
     ctx.provider.analyse_receipt_from_model.assert_not_awaited()
@@ -388,49 +404,60 @@ def test_list_images(api_context: ApiContext) -> None:
     """GET /images lists every image row (newest first)."""
     ctx = api_context
     ctx.conn.fetch = AsyncMock(
-        return_value=[_image_row(id=2, status="analyzed"), _image_row(id=1, status="pending")]
+        return_value=[
+            _image_row(id=OTHER_IMAGE_ID, status="analyzed"),
+            _image_row(id=IMAGE_ID, status="pending"),
+        ]
     )
 
     response = ctx.client.get(IMAGES_URL)
 
     assert response.status_code == 200
     body = response.json()
-    assert [item["id"] for item in body] == [2, 1]
+    assert [item["id"] for item in body] == [str(OTHER_IMAGE_ID), str(IMAGE_ID)]
 
 
 def test_list_images_filtered(api_context: ApiContext) -> None:
     """GET /images?status=pending,failed is the queued-image view."""
     ctx = api_context
     ctx.conn.fetch = AsyncMock(
-        return_value=[_image_row(id=1, status="pending"), _image_row(id=2, status="failed")]
+        return_value=[
+            _image_row(id=IMAGE_ID, status="pending"),
+            _image_row(id=OTHER_IMAGE_ID, status="failed"),
+        ]
     )
 
     response = ctx.client.get(IMAGES_URL, params={"status": "pending,failed"})
 
     assert response.status_code == 200
     body = response.json()
-    assert [(item["id"], item["status"]) for item in body] == [(1, "pending"), (2, "failed")]
+    assert [(item["id"], item["status"]) for item in body] == [
+        (str(IMAGE_ID), "pending"),
+        (str(OTHER_IMAGE_ID), "failed"),
+    ]
 
 
 def test_get_image_by_id(api_context: ApiContext) -> None:
     """GET /images/{id} returns a single image row."""
     ctx = api_context
-    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=11, status="analyzed", receipt_id=7))
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_image_row(id=IMAGE_ID, status="analyzed", receipt_id=RECEIPT_ID)
+    )
 
-    response = ctx.client.get(f"{IMAGES_URL}/11")
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["id"] == 11
+    assert body["id"] == str(IMAGE_ID)
     assert body["status"] == "analyzed"
-    assert body["receipt_id"] == 7
+    assert body["receipt_id"] == str(RECEIPT_ID)
 
 
 def test_get_image_by_id_not_found(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(return_value=None)
 
-    response = ctx.client.get(f"{IMAGES_URL}/999")
+    response = ctx.client.get(f"{IMAGES_URL}/{OTHER_IMAGE_ID}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Image not found"
@@ -446,11 +473,11 @@ def test_get_image_file_streams_bytes(api_context: ApiContext, tmp_path: Path) -
     image_file.write_bytes(b"image-bytes")
     ctx.conn.fetchrow = AsyncMock(
         return_value=_image_row(
-            id=11, status="analyzed", image_path=str(image_file), media_type="image/png"
+            id=IMAGE_ID, status="analyzed", image_path=str(image_file), media_type="image/png"
         )
     )
 
-    response = ctx.client.get(f"{IMAGES_URL}/11/file")
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/file")
 
     assert response.status_code == 200
     assert response.content == b"image-bytes"
@@ -461,7 +488,7 @@ def test_get_image_file_not_found_when_row_missing(api_context: ApiContext) -> N
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(return_value=None)
 
-    response = ctx.client.get(f"{IMAGES_URL}/999/file")
+    response = ctx.client.get(f"{IMAGES_URL}/{OTHER_IMAGE_ID}/file")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Image file not found"
@@ -470,9 +497,9 @@ def test_get_image_file_not_found_when_row_missing(api_context: ApiContext) -> N
 def test_get_image_file_not_found_when_path_missing(api_context: ApiContext) -> None:
     """Row exists but carries no stored path -> 404."""
     ctx = api_context
-    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=11, image_path=None))
+    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=IMAGE_ID, image_path=None))
 
-    response = ctx.client.get(f"{IMAGES_URL}/11/file")
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/file")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Image file not found"
@@ -482,10 +509,10 @@ def test_get_image_file_not_found_when_file_missing(api_context: ApiContext) -> 
     """Row points at a path that no longer exists on disk -> 404."""
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(
-        return_value=_image_row(id=11, image_path="/nonexistent/receipt.png")
+        return_value=_image_row(id=IMAGE_ID, image_path="/nonexistent/receipt.png")
     )
 
-    response = ctx.client.get(f"{IMAGES_URL}/11/file")
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/file")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Image file not found"
@@ -500,23 +527,23 @@ def test_delete_image(api_context: ApiContext, settings: Settings) -> None:
     tmp_file = Path(settings.images.tmp_dir) / "x.png"
     tmp_file.write_bytes(b"queued-image-bytes")
     ctx.conn.fetchrow = AsyncMock(
-        return_value=_image_row(id=5, status="pending", image_path=str(tmp_file))
+        return_value=_image_row(id=IMAGE_ID, status="pending", image_path=str(tmp_file))
     )
     ctx.conn.execute = AsyncMock()
 
-    response = ctx.client.delete(f"{IMAGES_URL}/5")
+    response = ctx.client.delete(f"{IMAGES_URL}/{IMAGE_ID}")
 
     assert response.status_code == 200
-    assert response.json()["deleted"] == 5
+    assert response.json()["deleted"] == str(IMAGE_ID)
     ctx.conn.execute.assert_awaited_once()
     assert not tmp_file.exists()
 
 
 def test_delete_analyzed_image_conflict(api_context: ApiContext) -> None:
     ctx = api_context
-    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=5, status="analyzed"))
+    ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=IMAGE_ID, status="analyzed"))
 
-    response = ctx.client.delete(f"{IMAGES_URL}/5")
+    response = ctx.client.delete(f"{IMAGES_URL}/{IMAGE_ID}")
 
     assert response.status_code == 409
     ctx.conn.execute.assert_not_awaited()
@@ -527,7 +554,7 @@ def test_delete_image_not_found(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(return_value=None)
 
-    response = ctx.client.delete(f"{IMAGES_URL}/999")
+    response = ctx.client.delete(f"{IMAGES_URL}/{OTHER_IMAGE_ID}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Image not found"
@@ -559,11 +586,13 @@ def test_analyze_images_success(api_context: ApiContext, tmp_path: Path) -> None
     def fetch_side_effect(sql: str, *args: object) -> list[dict[str, object]]:
         if sql == receipt_db_module.LIST_TAGS_SQL:
             return [{"name": "coffee"}, {"name": "food"}]
-        return [_image_row(id=11, status="pending", image_path=str(queued_file))]
+        return [_image_row(id=IMAGE_ID, status="pending", image_path=str(queued_file))]
 
     ctx.conn.fetch = AsyncMock(side_effect=fetch_side_effect)
     # list_pending_images uses fetch (one pending row); persist_receipt uses fetchrow.
-    ctx.conn.fetchrow = AsyncMock(return_value=_receipt_row(id=7, image_id=11))
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID)
+    )
     ctx.conn.execute = AsyncMock()
 
     response = ctx.client.post(f"{IMAGES_URL}/analyze")
@@ -571,9 +600,9 @@ def test_analyze_images_success(api_context: ApiContext, tmp_path: Path) -> None
     assert response.status_code == 200
     results = response.json()["results"]
     assert len(results) == 1
-    assert results[0]["image_id"] == 11
+    assert results[0]["image_id"] == str(IMAGE_ID)
     assert results[0]["status"] == "analyzed"
-    assert results[0]["receipt_id"] == 7
+    assert results[0]["receipt_id"] == str(RECEIPT_ID)
     ctx.conn.execute.assert_awaited()
     # The tag vocabulary was passed into the extraction prompt.
     llm_call = ctx.provider.analyse_receipt_from_model.call_args
@@ -649,7 +678,9 @@ def test_update_receipt_accepts_suggested_tags(api_context: ApiContext) -> None:
     model normalizes them, it does not reject them.
     """
     ctx = api_context
-    ctx.conn.fetchrow = AsyncMock(return_value=_receipt_row(id=7, merchant_name="ACME"))
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_receipt_row(id=RECEIPT_ID, merchant_name="ACME")
+    )
     ctx.conn.execute = AsyncMock()
 
     body = {
@@ -665,7 +696,9 @@ def test_update_receipt_accepts_suggested_tags(api_context: ApiContext) -> None:
     body["line_items"][0]["tags"] = ["brunch", "  Brunch  ", ""]
 
     response = ctx.client.put(
-        f"{RECEIPTS_URL}/7", json=body, headers={"Content-Type": "application/json"}
+        f"{RECEIPTS_URL}/{RECEIPT_ID}",
+        json=body,
+        headers={"Content-Type": "application/json"},
     )
 
     assert response.status_code == 200
@@ -686,7 +719,7 @@ def test_get_receipt_not_found(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(return_value=None)
 
-    response = ctx.client.get(f"{RECEIPTS_URL}/999")
+    response = ctx.client.get(f"{RECEIPTS_URL}/{OTHER_RECEIPT_ID}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Receipt not found"
@@ -696,8 +729,8 @@ def test_list_receipts(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.conn.fetch = AsyncMock(
         return_value=[
-            _receipt_row(id=2, merchant_name="Store B"),
-            _receipt_row(id=1, merchant_name="Store A"),
+            _receipt_row(id=OTHER_RECEIPT_ID, merchant_name="Store B"),
+            _receipt_row(id=RECEIPT_ID, merchant_name="Store A"),
         ]
     )
 
@@ -771,8 +804,8 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
     # Step 1: create an unverified receipt via POST /images
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
-            _image_row(id=11, original_filename="bauhaus.jpeg"),
-            _receipt_row(id=7, image_id=11),
+            _image_row(id=IMAGE_ID, original_filename="bauhaus.jpeg"),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID),
         ]
     )
     analyze_response = ctx.client.post(
@@ -790,9 +823,16 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
     # Step 2: verify -> fetchrow called for receipt, image, then the verified row
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
-            _receipt_row(id=7, image_id=11, status="unverified"),
-            _image_row(id=11, status="analyzed", receipt_id=7, image_path=tmp_path),
-            _receipt_row(id=7, image_id=11, status="verified", verified=True),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID, status="unverified"),
+            _image_row(
+                id=IMAGE_ID,
+                status="analyzed",
+                receipt_id=RECEIPT_ID,
+                image_path=tmp_path,
+            ),
+            _receipt_row(
+                id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
+            ),
         ]
     )
     ctx.conn.execute = AsyncMock()
@@ -804,7 +844,7 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
     assert body["verified"] is True
 
     assert list(Path(settings.images.tmp_dir).glob("*.png")) == []
-    saved = Path(settings.images.save_dir) / "receipt_7.png"
+    saved = Path(settings.images.save_dir) / f"receipt_{RECEIPT_ID}.png"
     assert saved.exists()
     assert saved.read_bytes() == JPEG_PATH.read_bytes()
 
@@ -813,10 +853,12 @@ def test_verify_receipt_already_verified_conflict(api_context: ApiContext) -> No
     """Verifying a receipt that is already verified -> 409, no state change."""
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(id=7, image_id=11, status="verified", verified=True)
+        return_value=_receipt_row(
+            id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
+        )
     )
 
-    response = ctx.client.post(f"{RECEIPTS_URL}/7/verify")
+    response = ctx.client.post(f"{RECEIPTS_URL}/{RECEIPT_ID}/verify")
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Receipt already verified"
@@ -833,8 +875,8 @@ def test_endpoints_return_503_when_db_not_ready(broken_context: ApiContext) -> N
     )
     receipt_listing = ctx.client.get(RECEIPTS_URL)
     image_listing = ctx.client.get(IMAGES_URL)
-    detail = ctx.client.get(f"{RECEIPTS_URL}/999")
-    image_file = ctx.client.get(f"{IMAGES_URL}/11/file")
+    detail = ctx.client.get(f"{RECEIPTS_URL}/{OTHER_RECEIPT_ID}")
+    image_file = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/file")
     tag_listing = ctx.client.get(TAGS_URL)
     tag_create = ctx.client.post(TAGS_URL, json={"name": "coffee"})
 
@@ -858,16 +900,21 @@ def test_delete_receipt(api_context: ApiContext, settings: Settings) -> None:
     tmp_file.write_bytes(b"receipt-image-bytes")
     ctx.conn.fetchrow = AsyncMock(
         side_effect=[
-            _receipt_row(id=7, image_id=11, merchant_name="Doomed Store"),
-            _image_row(id=11, status="analyzed", receipt_id=7, image_path=str(tmp_file)),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID, merchant_name="Doomed Store"),
+            _image_row(
+                id=IMAGE_ID,
+                status="analyzed",
+                receipt_id=RECEIPT_ID,
+                image_path=str(tmp_file),
+            ),
         ]
     )
     ctx.conn.execute = AsyncMock()
 
-    response = ctx.client.delete(f"{RECEIPTS_URL}/7")
+    response = ctx.client.delete(f"{RECEIPTS_URL}/{RECEIPT_ID}")
 
     assert response.status_code == 200
-    assert response.json()["deleted"] == 7
+    assert response.json()["deleted"] == str(RECEIPT_ID)
     executed = [call.args[0] for call in ctx.conn.execute.call_args_list]
     assert image_db_module.DELETE_IMAGE_SQL in executed
     assert not tmp_file.exists()
@@ -877,7 +924,7 @@ def test_delete_receipt_not_found(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(return_value=None)
 
-    response = ctx.client.delete(f"{RECEIPTS_URL}/999")
+    response = ctx.client.delete(f"{RECEIPTS_URL}/{OTHER_RECEIPT_ID}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Receipt not found"
@@ -889,7 +936,7 @@ def test_delete_receipt_referenced_conflict(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.conn.fetchrow = AsyncMock(side_effect=asyncpg.ForeignKeyViolationError("fk"))
 
-    response = ctx.client.delete(f"{RECEIPTS_URL}/7")
+    response = ctx.client.delete(f"{RECEIPTS_URL}/{RECEIPT_ID}")
 
     assert response.status_code == 409
     assert "benchmark" in response.json()["detail"]

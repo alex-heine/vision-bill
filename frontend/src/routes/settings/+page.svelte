@@ -1,5 +1,14 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { session } from '$lib/auth';
 	import { t } from '$lib/i18n';
+
+	$effect(() => {
+		if ($session !== 'loading' && $session !== null && !$session.is_admin) {
+			void goto(resolve('/'));
+		}
+	});
 </script>
 
 <svelte:head>

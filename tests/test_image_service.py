@@ -1,12 +1,15 @@
 from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 import pytest
 
 from vision_bill.config import Settings
 from vision_bill.model.image import ImageInfo
 from vision_bill.service.image_service import ImageService, UnsupportedImageTypeError
+
+RECEIPT_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 @pytest.fixture
@@ -106,10 +109,10 @@ def test_store_perm_image_moves_file(image_service: ImageService, settings: Sett
     tmp_path = image_service.store_tmp_image(content)
     save_dir = Path(settings.images.save_dir)
 
-    result = image_service.store_perm_image(tmp_path, 42)
+    result = image_service.store_perm_image(tmp_path, RECEIPT_ID)
 
     assert result is not None
-    assert result == save_dir / "receipt_42.png"
+    assert result == save_dir / f"receipt_{RECEIPT_ID}.png"
     assert result.exists()
     assert not tmp_path.exists()
     assert result.read_bytes() == content
@@ -122,6 +125,6 @@ def test_store_perm_image_missing_returns_none(
     """store_perm_image returns None when the tmp file no longer exists."""
     missing = Path(settings.images.tmp_dir) / "does_not_exist.png"
 
-    result = image_service.store_perm_image(missing, 1)
+    result = image_service.store_perm_image(missing, RECEIPT_ID)
 
     assert result is None
