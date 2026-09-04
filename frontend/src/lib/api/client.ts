@@ -3,6 +3,7 @@ import type {
 	ImageCreated,
 	ImageListFilters,
 	ImageRow,
+	ProductSearchResponse,
 	ReceiptListFilters,
 	ReceiptRow,
 	ReceiptStatistics,
@@ -110,6 +111,10 @@ export const api = {
 
 	getStatistics(weeks = 12): Promise<ReceiptStatistics> {
 		return request<ReceiptStatistics>(`/statistics${toQueryString({ weeks })}`);
+	},
+
+	searchProducts(query: string): Promise<ProductSearchResponse> {
+		return request<ProductSearchResponse>(`/search${toQueryString({ query })}`);
 	},
 
 	getSettings(): Promise<SettingsView> {
