@@ -1,6 +1,7 @@
 server_data/logs/*
 server_data/uploads/*
 server_data/uploads_tmp/*
+server_data/config/*
 tests/data
 docs/
 .opencode/
@@ -157,6 +158,7 @@ activemq-data/
 
 # Environments
 .env
+.env.scripts
 .envrc
 .venv
 env/

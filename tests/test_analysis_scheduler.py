@@ -79,9 +79,18 @@ def scheduler_context(settings: Settings) -> Generator[SchedulerContext, None, N
     image_db = MagicMock()
     image_db.is_ready = True
     image_db.list_pending_images = AsyncMock(return_value=[])
+
+    async def claim_image(image_id: UUID) -> ImageRow | None:
+        pending = image_db.list_pending_images.return_value
+        if isinstance(pending, list):
+            return next((image for image in pending if image.id == image_id), None)
+        return None
+
+    image_db.claim_for_analysis = AsyncMock(side_effect=claim_image)
     image_db.mark_analyzed = AsyncMock()
     image_db.mark_failed = AsyncMock()
     image_db.update_image_path = AsyncMock()
+    receipt_service.get_receipt_by_image_id = AsyncMock(return_value=None)
 
     image_service = MagicMock()
     image_service.store_perm_image = MagicMock(return_value=None)

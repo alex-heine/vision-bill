@@ -1,4 +1,4 @@
-import type { Category, ReceiptRow } from '$lib/types';
+import type { Category, ReceiptRow, WeeklyStatistics } from '$lib/types';
 
 export interface CurrencyTotal {
 	currency: string;
@@ -8,6 +8,12 @@ export interface CurrencyTotal {
 export interface CategoryTotal extends CurrencyTotal {
 	category: Category;
 	count: number;
+}
+
+export interface WeeklyPoint {
+	week_start: string;
+	total: number;
+	receipt_count: number;
 }
 
 function amount(value: string): number {
@@ -49,4 +55,29 @@ export function totalsByCategory(receipts: ReceiptRow[]): CategoryTotal[] {
 export function currentMonthReceipts(receipts: ReceiptRow[], today = new Date()): ReceiptRow[] {
 	const prefix = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 	return receipts.filter((receipt) => receipt.date.startsWith(prefix));
+}
+
+export function weeklySeries(
+	rows: WeeklyStatistics[],
+	currency: string,
+	today = new Date(),
+	points = 12
+): WeeklyPoint[] {
+	const start = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+	start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
+	const byWeek = new Map(
+		rows.filter((row) => row.currency === currency).map((row) => [row.week_start, row] as const)
+	);
+
+	return Array.from({ length: points }, (_, index) => {
+		const week = new Date(start);
+		week.setUTCDate(week.getUTCDate() - (points - index - 1) * 7);
+		const weekStart = week.toISOString().slice(0, 10);
+		const row = byWeek.get(weekStart);
+		return {
+			week_start: weekStart,
+			total: row ? amount(row.total) : 0,
+			receipt_count: row?.receipt_count ?? 0
+		};
+	});
 }

@@ -5,8 +5,11 @@ import type {
 	ImageRow,
 	ReceiptListFilters,
 	ReceiptRow,
+	ReceiptStatistics,
 	ReceiptWithDetails,
 	ReceiptWrite,
+	SettingsUpdate,
+	SettingsView,
 	User,
 	UiConfig
 } from '$lib/types';
@@ -103,6 +106,25 @@ export const api = {
 
 	getUiConfig(): Promise<UiConfig> {
 		return request<UiConfig>('/system/ui-config');
+	},
+
+	getStatistics(weeks = 12): Promise<ReceiptStatistics> {
+		return request<ReceiptStatistics>(`/statistics${toQueryString({ weeks })}`);
+	},
+
+	getSettings(): Promise<SettingsView> {
+		return request<SettingsView>('/system/settings');
+	},
+
+	updateSettings(body: SettingsUpdate): Promise<SettingsView> {
+		return request<SettingsView>('/system/settings', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				llm: body.llm,
+				allow_registration: body.allow_registration
+			})
+		});
 	},
 
 	/** GET /auth/me returns the current user (401 when the session is gone). */

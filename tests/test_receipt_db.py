@@ -21,6 +21,7 @@ from vision_bill.provider.db.receipt_db import (
     INSERT_TAG_SQL,
     INSERT_TAX_SQL,
     LIST_TAGS_SQL,
+    SEARCH_PRODUCTS_BASE_SQL,
     ReceiptDB,
 )
 
@@ -248,14 +249,15 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     assert bound_time == Time(14, 30)
     # category is the 8th bound parameter
     assert fetchrow_call.args[8] == "grocery"
-    # status, image_id and verified are the last three bound parameters
+    # status, verified, user_id and image_id are the last bound parameters
     assert fetchrow_call.args[15] == "unverified"
-    assert fetchrow_call.args[16] == IMAGE_ID
-    assert fetchrow_call.args[17] is False
+    assert fetchrow_call.args[16] is False
+    assert fetchrow_call.args[18] == IMAGE_ID
 
     assert mock_conn.fetchrow.call_count == 1
-    # One execute each for the line item and the tax
-    assert mock_conn.execute.call_count == 2
+    # Deletes replace any previous children, followed by one insert each for
+    # the line item and the tax.
+    assert mock_conn.execute.call_count == 4
 
 
 @pytest.mark.asyncio
@@ -306,6 +308,37 @@ async def test_list_receipts(db: ReceiptDB) -> None:
     assert len(results) == 2
     assert results[0].merchant_name == "Store B"
     assert results[1].merchant_name == "Store A"
+
+
+@pytest.mark.asyncio
+async def test_search_products(db: ReceiptDB) -> None:
+    """search_products should match verified line items and map purchase data."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetch = AsyncMock(
+        return_value=[
+            {
+                **_line_item_row(RECEIPT_ID),
+                "description": "Gouda Mittelalt",
+                "merchant_name": "Test Store",
+                "date": Date(2024, 1, 15),
+                "time": Time(14, 30),
+                "currency": "EUR",
+            }
+        ]
+    )
+
+    results = await db.search_products("gouda")
+
+    assert len(results) == 1
+    assert results[0].description == "Gouda Mittelalt"
+    assert results[0].unit_price == Decimal("10.00")
+    assert results[0].time == "14:30:00"
+    fetch_call = mock_conn.fetch.call_args
+    assert fetch_call is not None
+    assert fetch_call.args[0].startswith(SEARCH_PRODUCTS_BASE_SQL)
+    assert "li.description ILIKE $1" in fetch_call.args[0]
+    assert fetch_call.args[1] == "%gouda%"
 
 
 @pytest.mark.asyncio

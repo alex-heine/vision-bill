@@ -33,6 +33,9 @@ class AnalysisResult:
 class LLMProvider(ABC):
     """Interface every LLM backend must implement."""
 
+    def update_runtime_settings(self, *, temperature: float) -> None:
+        """Apply settings which are safe to change without rebuilding a provider."""
+
     @abstractmethod
     async def get_available_models(self) -> list[ModelInfo]:
         """Return the models this provider currently exposes."""

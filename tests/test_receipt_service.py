@@ -14,6 +14,7 @@ from vision_bill.config import Settings
 from vision_bill.model.db.image import ImageRow
 from vision_bill.model.db.receipt import ReceiptRow
 from vision_bill.model.receipt import LineItem, Receipt, TaxLine
+from vision_bill.model.search import ProductPurchase
 from vision_bill.provider.llm.base import LLMProvider, ModelInfo
 from vision_bill.service.receipt_service import ReceiptService
 
@@ -342,6 +343,7 @@ def delegation_context(settings: Settings) -> Generator[DelegationContext, None,
         mock_db.persist_receipt = AsyncMock()
         mock_db.get_receipt_by_id = AsyncMock()
         mock_db.list_receipts = AsyncMock()
+        mock_db.search_products = AsyncMock()
         mock_db.get_receipt_with_details = AsyncMock()
         mock_db.update_receipt = AsyncMock()
         mock_db.verify_receipt = AsyncMock()
@@ -469,6 +471,47 @@ async def test_list_receipts_delegates(delegation_context: DelegationContext) ->
         can_see_all=False,
     )
     assert result is rows
+
+
+@pytest.mark.asyncio
+async def test_search_products_calculates_unit_price_summary(
+    delegation_context: DelegationContext,
+) -> None:
+    """search_products delegates to the DB and summarizes returned prices."""
+    service, mock_db, _ = delegation_context
+    purchases = [
+        ProductPurchase(
+            receipt_id=RECEIPT_ID,
+            description="Gouda Mittelalt",
+            merchant_name="Store A",
+            date=Date(2024, 3, 1),
+            quantity=1,
+            unit_price=Decimal("3.20"),
+            currency="EUR",
+        ),
+        ProductPurchase(
+            receipt_id=OTHER_RECEIPT_ID,
+            description="Gouda",
+            merchant_name="Store B",
+            date=Date(2024, 2, 1),
+            quantity=1,
+            unit_price=Decimal("2.80"),
+            currency="EUR",
+        ),
+    ]
+    mock_db.search_products.return_value = purchases
+
+    result = await service.search_products("Gouda")
+
+    mock_db.search_products.assert_awaited_once_with(
+        "Gouda", user_id=None, can_see_all=False
+    )
+    assert result.query == "Gouda"
+    assert result.purchases == purchases
+    assert result.latest_price == Decimal("3.20")
+    assert result.cheapest_price == Decimal("2.80")
+    assert result.average_price == Decimal("3.00")
+    assert result.currency == "EUR"
 
 
 @pytest.mark.asyncio

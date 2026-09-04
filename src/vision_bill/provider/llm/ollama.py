@@ -30,8 +30,12 @@ RETRY_LIMIT = 3
 
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, host: str):
+    def __init__(self, host: str, temperature: float = 0.0):
         self._client = AsyncClient(host=host)
+        self._temperature = temperature
+
+    def update_runtime_settings(self, *, temperature: float) -> None:
+        self._temperature = temperature
 
     async def check_connection(self) -> bool:
         try:
@@ -124,7 +128,7 @@ class OllamaProvider(LLMProvider):
             model=model_id,
             # format=Receipt.model_json_schema(),
             messages=messages,
-            options={"temperature": 0.0},
+            options={"temperature": self._temperature},
         )
 
         return response.message.content or ""

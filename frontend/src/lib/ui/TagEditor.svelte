@@ -38,9 +38,15 @@
 		value.push(...next);
 	}
 
-	function onStandardChange(event: Event): void {
-		const select = event.currentTarget as HTMLSelectElement;
-		setStandardTags(Array.from(select.selectedOptions).map((option) => option.value));
+	function hasStandardTag(tag: string): boolean {
+		return standardTags.some((entry) => entry.toLowerCase() === tag.toLowerCase());
+	}
+
+	function toggleStandardTag(tag: string): void {
+		const next = hasStandardTag(tag)
+			? standardTags.filter((entry) => entry.toLowerCase() !== tag.toLowerCase())
+			: [...standardTags, tag];
+		setStandardTags(next);
 	}
 
 	function removeSuggested(tag: string): void {
@@ -107,20 +113,30 @@
 </script>
 
 <div class="space-y-3">
-	<!-- Standard tags: a real multi-select over the DB vocabulary -->
+	<!-- Standard tags: touch-friendly toggles avoid the native multi-select gesture on mobile. -->
 	<div>
-		<label class={labelClass} for="{id}-tags-select">{$t('editor.tagsSelect')}</label>
-		<select
+		<span id="{id}-tags-label" class={labelClass}>{$t('editor.tagsSelect')}</span>
+		<div
 			id="{id}-tags-select"
-			multiple
-			class="{inputClass} min-h-24 py-2"
-			value={standardTags}
-			onchange={onStandardChange}
+			class="mt-1 flex flex-wrap gap-2"
+			role="group"
+			aria-labelledby="{id}-tags-label"
 		>
 			{#each tagOptions as tag (tag)}
-				<option value={tag}>{tag}</option>
+				<button
+					type="button"
+					class="min-h-11 rounded-full border px-3 py-2 text-sm font-medium transition-colors {hasStandardTag(
+						tag
+					)
+						? 'border-primary bg-primary-container text-on-primary-container'
+						: 'border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-high'}"
+					aria-pressed={hasStandardTag(tag)}
+					onclick={() => toggleStandardTag(tag)}
+				>
+					{tag}
+				</button>
 			{/each}
-		</select>
+		</div>
 	</div>
 
 	<!-- Suggested tags (present on the item but not in the vocabulary) -->
@@ -139,7 +155,7 @@
 						{tag}
 						<button
 							type="button"
-							class="rounded-full p-1 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+							class="flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
 							title={$t('editor.tagsKeep')}
 							aria-label={$t('editor.tagsKeep')}
 							disabled={creating}
@@ -149,7 +165,7 @@
 						</button>
 						<button
 							type="button"
-							class="rounded-full p-1 text-on-surface-variant hover:bg-error-container hover:text-on-error-container"
+							class="flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 text-on-surface-variant hover:bg-error-container hover:text-on-error-container"
 							title={$t('editor.tagsRemove')}
 							aria-label={$t('editor.tagsRemove')}
 							disabled={creating}
@@ -167,7 +183,7 @@
 	<div>
 		<label class={labelClass} for="{id}-tags-add">{$t('editor.tagsAdd')}</label>
 		<div class="relative">
-			<div class="flex gap-2">
+			<div class="flex flex-col gap-2 sm:flex-row">
 				<input
 					id="{id}-tags-add"
 					class={inputClass}
@@ -183,7 +199,7 @@
 				/>
 				<button
 					type="button"
-					class="shrink-0 rounded-lg bg-secondary-container px-3 py-2 text-sm font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50"
+					class="flex min-h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-secondary-container px-3 py-2 text-sm font-medium text-on-secondary-container hover:opacity-90 disabled:opacity-50 sm:w-auto"
 					disabled={addDisabled}
 					onclick={() => addTag()}
 				>

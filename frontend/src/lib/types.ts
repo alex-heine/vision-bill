@@ -1,4 +1,4 @@
-export type ImageStatus = 'pending' | 'analyzed' | 'failed';
+export type ImageStatus = 'pending' | 'processing' | 'analyzed' | 'failed';
 
 export type ReceiptStatus = 'unverified' | 'verified';
 
@@ -27,6 +27,7 @@ export interface ImageRow {
 	user_id: string | null;
 	created_at: string | null;
 	analyzed_at: string | null;
+	processing_at: string | null;
 }
 
 export interface ReceiptRow {
@@ -105,6 +106,75 @@ export interface User {
 export interface UiConfig {
 	bypass_review_default: boolean;
 	registration_open: boolean;
+}
+
+export interface CurrencyStatistics {
+	currency: string;
+	receipt_count: number;
+	total: string;
+	average: string;
+	median: string;
+	minimum: string;
+	maximum: string;
+	subtotal: string;
+	discounts: string;
+	taxes: string;
+	tips: string;
+}
+
+export interface NamedStatistics {
+	name: string;
+	currency: string;
+	receipt_count: number;
+	total: string;
+	average: string;
+}
+
+export interface WeekdayStatistics {
+	weekday: number;
+	currency: string;
+	receipt_count: number;
+	total: string;
+	average: string;
+}
+
+export interface WeeklyStatistics {
+	week_start: string;
+	currency: string;
+	receipt_count: number;
+	total: string;
+	average: string;
+}
+
+export interface ReceiptStatistics {
+	verified_receipt_count: number;
+	currencies: CurrencyStatistics[];
+	merchants: NamedStatistics[];
+	categories: NamedStatistics[];
+	payment_methods: NamedStatistics[];
+	weekdays: WeekdayStatistics[];
+	weekly_spending: WeeklyStatistics[];
+}
+
+export type SettingSource = 'environment' | 'config' | 'default';
+
+export interface EditableLlmSettings {
+	provider: 'ollama' | 'anthropic' | 'openai';
+	host: string;
+	model_name: string;
+	temperature: number;
+}
+
+export interface SettingsView {
+	llm: EditableLlmSettings;
+	allow_registration: boolean;
+	sources: Record<string, SettingSource>;
+	restart_required: boolean;
+}
+
+export interface SettingsUpdate {
+	llm: EditableLlmSettings;
+	allow_registration: boolean;
 }
 
 export interface LineItemWrite {

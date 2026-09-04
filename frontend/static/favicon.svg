@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+  <title>Vision Bill</title>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="#6750a4"/>
+  <path d="M17 12h30v40l-5-3-5 3-5-3-5 3-5-3-5 3V12Z" fill="#fff"/>
+  <path d="M23 22h18" fill="none" stroke="#6750a4" stroke-width="3" stroke-linecap="round"/>
+  <path d="M21 34s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" fill="#eaddff" stroke="#6750a4" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="32" cy="34" r="3.5" fill="#6750a4"/>
+  <path d="M25 46h14" fill="none" stroke="#6750a4" stroke-width="3" stroke-linecap="round"/>
+</svg>

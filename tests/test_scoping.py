@@ -33,17 +33,18 @@ from vision_bill.provider.db import image_db as image_db_module
 from vision_bill.provider.db import receipt_db as receipt_db_module
 from vision_bill.provider.db.image_db import (
     GET_IMAGE_SQL,
-    ImageDB,
     LIST_IMAGES_BASE_SQL,
+    ImageDB,
 )
 from vision_bill.provider.db.receipt_db import (
     DELETE_RECEIPT_SQL,
     GET_RECEIPT_SQL,
     GET_RECEIPT_WITH_IMAGE_SQL,
     LIST_RECEIPTS_BASE_SQL,
-    ReceiptDB,
+    SEARCH_PRODUCTS_BASE_SQL,
     UPDATE_RECEIPT_SQL,
     VERIFY_RECEIPT_SQL,
+    ReceiptDB,
 )
 from vision_bill.provider.llm.base import ModelInfo
 from vision_bill.security.dependencies import get_current_user
@@ -245,6 +246,25 @@ async def test_list_receipts_see_all_unscoped(receipt_db: ReceiptDB) -> None:
     call = conn.fetch.call_args
     assert "user_id" not in call.args[0]
     assert call.args[0] == LIST_RECEIPTS_BASE_SQL + " ORDER BY date DESC LIMIT $1 OFFSET $2"
+
+
+@pytest.mark.asyncio
+async def test_search_products_scoped_to_owner(receipt_db: ReceiptDB) -> None:
+    """Product search must not expose another user's verified line items."""
+    conn = AsyncMock()
+    receipt_db._pool = _make_pool(conn)
+    conn.fetch = AsyncMock(return_value=[])
+
+    await receipt_db.search_products("Gouda", user_id=USER_A, can_see_all=False)
+
+    call = conn.fetch.call_args
+    assert call is not None
+    assert call.args[0].startswith(SEARCH_PRODUCTS_BASE_SQL)
+    assert "r.status = 'verified'" in call.args[0]
+    assert "r.verified = TRUE" in call.args[0]
+    assert "r.user_id = $2" in call.args[0]
+    assert call.args[1] == "%Gouda%"
+    assert call.args[2] == USER_A
 
 
 @pytest.mark.asyncio
