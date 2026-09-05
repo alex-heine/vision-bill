@@ -151,20 +151,22 @@ class ReceiptService:
         can_see_all: bool = False,
     ) -> ProductSearchResponse:
         """Search verified line items and calculate their unit-price summary."""
-        purchases = await self._db.search_products(
-            query, user_id=user_id, can_see_all=can_see_all
-        )
+        purchases = await self._db.search_products(query, user_id=user_id, can_see_all=can_see_all)
         if not purchases:
             return ProductSearchResponse(query=query, purchases=[])
 
         prices = [purchase.unit_price for purchase in purchases]
         # Currency conversion is intentionally out of scope: the current
         # application assumes a user pays in one currency.
+        # cheapest_price is the lowest non-negative unit price: a negative Pfand
+        # refund line is money returned, not a price a customer pays, so it is
+        # excluded (and None is reported when no such price exists).
+        non_negative_prices = [price for price in prices if price >= 0]
         return ProductSearchResponse(
             query=query,
             purchases=purchases,
             latest_price=purchases[0].unit_price,
-            cheapest_price=min(prices),
+            cheapest_price=min(non_negative_prices) if non_negative_prices else None,
             average_price=sum(prices, Decimal(0)) / len(prices),
             currency=purchases[0].currency,
         )

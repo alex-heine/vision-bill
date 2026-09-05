@@ -87,6 +87,19 @@ def _line_item_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
     }
 
 
+def _pfand_line_item_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
+    """Driver row for a German bottle-deposit refund (negative prices)."""
+    return {
+        "id": LINE_ITEM_ID,
+        "receipt_id": receipt_id,
+        "description": "Pfand (Flaschen)",
+        "quantity": Decimal("3.0000"),
+        "unit_price": Decimal("-0.25"),
+        "total_price": Decimal("-0.75"),
+        "tags": ["other"],
+    }
+
+
 def _tax_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
     return {
         "id": TAX_ID,
@@ -257,6 +270,38 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
 
 
 @pytest.mark.asyncio
+async def test_persist_receipt_binds_negative_line_item_prices(db: ReceiptDB) -> None:
+    """Negative Pfand line-item prices must be bound to the INSERT as negative values."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_id=IMAGE_ID))
+    mock_conn.execute = AsyncMock()
+
+    receipt = _make_receipt()
+    receipt.line_items.append(
+        LineItem(
+            description="Pfand (Flaschen)",
+            quantity=3,
+            unit_price=Decimal("-0.25"),
+            total_price=Decimal("-0.75"),
+        )
+    )
+
+    await db.persist_receipt(receipt, image_id=IMAGE_ID, status="unverified")
+
+    insert_calls = [
+        call for call in mock_conn.execute.call_args_list if call.args[0] == INSERT_LINE_ITEM_SQL
+    ]
+    assert len(insert_calls) == 2
+    pfand_call = insert_calls[1]
+    # $4 = unit_price and $5 = total_price arrive as negative floats, not clamped.
+    assert pfand_call.args[4] == -0.25
+    assert pfand_call.args[5] == -0.75
+    assert isinstance(pfand_call.args[4], float)
+    assert isinstance(pfand_call.args[5], float)
+
+
+@pytest.mark.asyncio
 async def test_get_receipt_by_found(db: ReceiptDB) -> None:
     """get_receipt_by_id should return a ReceiptRow when found."""
     mock_conn = AsyncMock()
@@ -373,6 +418,32 @@ async def test_get_receipt_with_details(db: ReceiptDB) -> None:
     assert details.line_items[0].tags == ["test"]
     assert len(details.taxes) == 1
     assert details.taxes[0].rate == 0.19
+
+
+@pytest.mark.asyncio
+async def test_get_receipt_with_details_reads_back_negative_line_item(db: ReceiptDB) -> None:
+    """Negative prices returned by the driver must round-trip onto a LineItemRow."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row())
+
+    def fetch_side_effect(sql: str, *args: object) -> list[dict[str, Any]]:
+        if "line_items" in sql:
+            return [_pfand_line_item_row(RECEIPT_ID)]
+        if "taxes" in sql:
+            return []
+        return []
+
+    mock_conn.fetch = AsyncMock(side_effect=fetch_side_effect)
+
+    details = await db.get_receipt_with_details(RECEIPT_ID)
+
+    assert details is not None
+    item = details.line_items[0]
+    assert item.unit_price == Decimal("-0.25")
+    assert item.total_price == Decimal("-0.75")
+    assert item.unit_price < 0
+    assert item.total_price < 0
 
 
 # ── Update and verify ────────────────────────────────────────────────
