@@ -200,3 +200,103 @@ async def test_get_available_models_skips_empty_ids(mock_client):
     models = await provider.get_available_models()
 
     assert models == []
+
+
+def _chat_response(content: str | None):
+    """Build a stand-in for a chat.completions.create() response."""
+    message = MagicMock()
+    message.content = content
+    choice = MagicMock()
+    choice.message = message
+    return MagicMock(choices=[choice])
+
+
+@pytest.mark.asyncio
+async def test_send_message_returns_content(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response("hello there")
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    result = await provider.send_message("model-x", [{"role": "user", "content": "hi"}])
+
+    assert result == "hello there"
+    mock_client.chat.completions.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_message_empty_content(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response(None)
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    result = await provider.send_message("model-x", [{"role": "user", "content": "hi"}])
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_send_message_sends_temperature_and_reasoning_effort(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response("ok")
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none", temperature=0.3)
+    await provider.send_message("model-x", [{"role": "user", "content": "hi"}])
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "model-x"
+    assert kwargs["temperature"] == 0.3
+    assert kwargs["reasoning_effort"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_update_runtime_settings_changes_temperature(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response("ok")
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none", temperature=0.1)
+    provider.update_runtime_settings(temperature=0.9)
+    await provider.send_message("model-x", [{"role": "user", "content": "hi"}])
+
+    assert mock_client.chat.completions.create.call_args.kwargs["temperature"] == 0.9
+
+
+def test_build_image_messages_data_uri():
+    import base64
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    image_path = Path("fake.jpg")
+
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch(
+            "vision_bill.provider.llm.openai.Path.read_bytes",
+            return_value=b"\xff\xd8\xff fake jpeg bytes",
+        ),
+    ):
+        messages = provider._build_image_messages(image_path, tags=["coffee"])
+
+    assert len(messages) == 1
+    assert messages[0]["role"] == "user"
+    parts = messages[0]["content"]
+    assert parts[0]["type"] == "text"
+    assert "Prefer tags from this list: coffee" in parts[0]["text"]
+    assert parts[1]["type"] == "image_url"
+    expected_b64 = base64.b64encode(b"\xff\xd8\xff fake jpeg bytes").decode()
+    assert parts[1]["image_url"]["url"] == f"data:image/jpeg;base64,{expected_b64}"
+
+
+def test_build_image_messages_png_mime():
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch("vision_bill.provider.llm.openai.Path.read_bytes", return_value=b"\x89PNG fake"),
+    ):
+        messages = provider._build_image_messages(Path("fake.png"))
+
+    parts = messages[0]["content"]
+    assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_build_image_messages_missing_file_raises():
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+
+    with patch("vision_bill.provider.llm.openai.Path.exists", return_value=False):
+        with pytest.raises(FileNotFoundError):
+            provider._build_image_messages(Path("nope.jpg"))
