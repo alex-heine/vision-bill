@@ -110,7 +110,12 @@ def _openai_entry(model_id, n_params):
         "object": "model",
         "created": 1788563881,
         "owned_by": "llamacpp",
-        "meta": {"n_params": n_params, "size": 13135396864, "ftype": "Q3_K - Large", "n_ctx": 32000},
+        "meta": {
+            "n_params": n_params,
+            "size": 13135396864,
+            "ftype": "Q3_K - Large",
+            "n_ctx": 32000,
+        },
     }
 
 
@@ -141,7 +146,11 @@ async def test_get_available_models_filters_to_vision(mock_client):
 @pytest.mark.asyncio
 async def test_get_available_models_prefers_details_parameter_size(mock_client):
     body = _hybrid_body(
-        [_ollama_entry("gemma:7b", ["completion", "vision"], digest="sha256:xyz", parameter_size="7B")],
+        [
+            _ollama_entry(
+                "gemma:7b", ["completion", "vision"], digest="sha256:xyz", parameter_size="7B"
+            )
+        ],
         [_openai_entry("gemma:7b", 7000000000)],
     )
     mock_client.models.with_raw_response.list.return_value = _raw_response(body)
@@ -168,7 +177,10 @@ async def test_get_available_models_falls_back_to_data_entries(mock_client):
                     "object": "model",
                     "created": 1,
                     "owned_by": "x",
-                    "architecture": {"input_modalities": ["text", "image"], "output_modalities": ["text"]},
+                    "architecture": {
+                        "input_modalities": ["text", "image"],
+                        "output_modalities": ["text"],
+                    },
                 },
                 {
                     "id": "text-model",
@@ -300,3 +312,133 @@ def test_build_image_messages_missing_file_raises():
     with patch("vision_bill.provider.llm.openai.Path.exists", return_value=False):
         with pytest.raises(FileNotFoundError):
             provider._build_image_messages(Path("nope.jpg"))
+
+
+VALID_RECEIPT_JSON = (
+    '{"confidence": 95, "merchant_name": "Test Shop", "merchant_address": "123 Main St", '
+    '"receipt_number": "REC001", "date": "2024-08-06", "time": "14:00", "currency": "USD", '
+    '"line_items": [{"description": "Coffee", "quantity": 1, "unit_price": 5.00, '
+    '"total_price": 5.00, "category": "restaurant"}], '
+    '"taxes": [{"name": "VAT", "rate": 0.20, "amount": 1.00}], "subtotal": 5.00, '
+    '"discount_total": 0.00, "tax_total": 1.00, "tip": 0.50, "total": 6.50, '
+    '"payment_method": "credit_card"}'
+)
+
+
+@pytest.mark.asyncio
+async def test_analyse_receipt_success(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response(VALID_RECEIPT_JSON)
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch("vision_bill.provider.llm.openai.Path.read_bytes", return_value=b"fake image bytes"),
+    ):
+        result = await provider.analyse_receipt_from_model("model-x", Path("fake.jpg"))
+
+    assert result.merchant_name == "Test Shop"
+    assert float(result.total) == 6.50
+    assert mock_client.chat.completions.create.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_analyse_receipt_retry_on_empty(mock_client):
+    mock_client.chat.completions.create.side_effect = [
+        _chat_response(None),
+        _chat_response(VALID_RECEIPT_JSON),
+    ]
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch("vision_bill.provider.llm.openai.Path.read_bytes", return_value=b"fake image bytes"),
+    ):
+        result = await provider.analyse_receipt_from_model("model-x", Path("fake.jpg"))
+
+    assert result.merchant_name == "Test Shop"
+    assert mock_client.chat.completions.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_analyse_receipt_repair_loop(mock_client):
+    bad_content = '{"merchant": "Bad JSON"'  # Missing closing brace
+    mock_client.chat.completions.create.side_effect = [
+        _chat_response(bad_content),
+        _chat_response(VALID_RECEIPT_JSON),
+    ]
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch("vision_bill.provider.llm.openai.Path.read_bytes", return_value=b"fake image bytes"),
+    ):
+        result = await provider.analyse_receipt_from_model("model-x", Path("fake.jpg"))
+
+    assert result.merchant_name == "Test Shop"
+    assert mock_client.chat.completions.create.call_count == 2
+
+    # The second call must contain the repair feedback in its message history.
+    second_call_messages = mock_client.chat.completions.create.call_args_list[1].kwargs["messages"]
+    flat = _flatten_message_contents(second_call_messages)
+    assert any("Please respond again with ONLY corrected JSON" in part for part in flat)
+    assert any(bad_content in part for part in flat)
+
+
+@pytest.mark.asyncio
+async def test_analyse_receipt_no_vision_message(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response(
+        "I cannot provide an analysis because I cannot process the image."
+    )
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch("vision_bill.provider.llm.openai.Path.read_bytes", return_value=b"fake image bytes"),
+        pytest.raises(ValueError, match=".*supports vision capabilities.*"),
+    ):
+        await provider.analyse_receipt_from_model("model-x", Path("fake.jpg"))
+
+
+@pytest.mark.asyncio
+async def test_analyse_receipt_fails_after_retries(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response('{"merchant": "Broken"')
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch("vision_bill.provider.llm.openai.Path.read_bytes", return_value=b"fake image bytes"),
+        pytest.raises(ValueError, match=r".*Failed to get a valid response.*3 attempts.*"),
+    ):
+        await provider.analyse_receipt_from_model("model-x", Path("fake.jpg"))
+
+    assert mock_client.chat.completions.create.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_analyse_receipt_with_metadata_returns_telemetry(mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response(VALID_RECEIPT_JSON)
+
+    provider = OpenAIProvider(host="http://localhost:8642/v1", api_key="none")
+    with (
+        patch("vision_bill.provider.llm.openai.Path.exists", return_value=True),
+        patch("vision_bill.provider.llm.openai.Path.read_bytes", return_value=b"fake image bytes"),
+    ):
+        result = await provider.analyse_receipt_with_metadata("model-x", Path("fake.jpg"))
+
+    assert result.receipt.merchant_name == "Test Shop"
+    assert result.attempts == 1
+    assert result.elapsed_ms >= 0
+
+
+def _flatten_message_contents(messages):
+    """Yield text parts out of OpenAI-style messages (str or content-part lists)."""
+    parts = []
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    parts.append(item.get("text", ""))
+    return parts

@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import mimetypes
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -11,7 +12,7 @@ from ...helper.logging_config import setup_logging
 setup_logging()
 
 from ...model.receipt import Receipt
-from ...provider.llm.base import LLMProvider, ModelInfo
+from ...provider.llm.base import AnalysisResult, LLMProvider, ModelInfo
 
 try:
     from openai import APIConnectionError, APIStatusError, AsyncOpenAI
@@ -168,9 +169,72 @@ class OpenAIProvider(LLMProvider):
             }
         ]
 
-    # The method below gets its real implementation in a follow-up task;
-    # this typed stub keeps the class instantiable in the meantime.
     async def analyse_receipt_from_model(
         self, model_id: str, image: Path, tags: Sequence[str] | None = None
     ) -> Receipt:
-        raise NotImplementedError
+        return (await self.analyse_receipt_with_metadata(model_id, image, tags=tags)).receipt
+
+    async def analyse_receipt_with_metadata(
+        self, model_id: str, image: Path, tags: Sequence[str] | None = None
+    ) -> AnalysisResult:
+        from time import perf_counter
+
+        started = perf_counter()
+        messages = self._build_image_messages(image, tags)
+
+        last_error: Exception | None = None
+        for attempt in range(1, RETRY_LIMIT + 1):
+            content = await self.send_message(model_id, messages)
+
+            if not content:
+                logger.warning("Attempt %d/%d: model returned no content", attempt, RETRY_LIMIT)
+                last_error = ValueError("Empty response from model")
+                continue
+
+            logger.warning(f"Attempt {attempt}/{RETRY_LIMIT}: model returned content: {content}")
+
+            if bool(re.search(r"provide.*image", content, re.IGNORECASE | re.DOTALL)):
+                raise ValueError(
+                    f"Model '{model_id}' returned a message indicating it cannot process images. "
+                    "Please ensure the model supports vision capabilities."
+                )
+
+            try:
+                return AnalysisResult(
+                    receipt=self.parse_llm_response(content),
+                    attempts=attempt,
+                    elapsed_ms=(perf_counter() - started) * 1000,
+                )
+            except ValueError as e:
+                logger.warning(
+                    "Attempt %d/%d: failed to parse LLM response: %s",
+                    attempt,
+                    RETRY_LIMIT,
+                    e,
+                )
+                last_error = e
+                # Feed the parse error back so the retry has a chance to self-correct
+                messages = self._append_repair_message(messages, content, e)
+
+        raise ValueError(
+            f"Failed to get a valid response from model '{model_id}' after {RETRY_LIMIT} attempts"
+        ) from last_error
+
+    def _append_repair_message(
+        self,
+        messages: list[dict[str, Any]],
+        bad_output: str,
+        error: ValueError,
+    ) -> list[dict[str, Any]]:
+        """Append the failed output + error so the model can self-correct on retry."""
+        return [
+            *messages,
+            {"role": "assistant", "content": bad_output},
+            {
+                "role": "user",
+                "content": (
+                    "That response was not valid JSON matching the required schema. "
+                    f"Error: {error}\n\nPlease respond again with ONLY corrected JSON."
+                ),
+            },
+        ]
