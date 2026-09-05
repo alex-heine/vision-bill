@@ -24,7 +24,6 @@ class LineItem(BaseModel):
     quantity: float = Field(gt=0, description="Quantity purchased")
     unit_price: Decimal = Field(ge=0, description="Price per unit")
     total_price: Decimal = Field(ge=0, description="quantity * unit_price, line total")
-    category: Category = Field(default="other", description="Best-guess category of the item")
     tags: list[str] = Field(
         default_factory=list,
         description=(

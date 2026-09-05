@@ -92,8 +92,8 @@ DELETE_RECEIPT_SQL = "DELETE FROM receipts WHERE id = $1 RETURNING *"
 INSERT_LINE_ITEM_SQL = """
     INSERT INTO line_items
         (receipt_id, description, quantity, unit_price,
-         total_price, category, tags)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+         total_price, tags)
+    VALUES ($1, $2, $3, $4, $5, $6)
 """
 
 INSERT_TAX_SQL = """
@@ -104,8 +104,7 @@ INSERT_TAX_SQL = """
 
 GET_RECEIPT_SQL = "SELECT * FROM receipts WHERE id = $1"
 GET_RECEIPT_BY_IMAGE_ID_SQL = (
-    "SELECT * FROM receipts WHERE image_id = $1 "
-    "ORDER BY created_at ASC, id ASC LIMIT 1"
+    "SELECT * FROM receipts WHERE image_id = $1 ORDER BY created_at ASC, id ASC LIMIT 1"
 )
 # Join the images table so the detail response can expose the resolved
 # image_path without a second round-trip.
@@ -275,7 +274,6 @@ class ReceiptDB:
             quantity=float(d["quantity"]),
             unit_price=Decimal(d["unit_price"]),
             total_price=Decimal(d["total_price"]),
-            category=d["category"],
             tags=list(d.get("tags") or []),
         )
 
@@ -318,7 +316,6 @@ class ReceiptDB:
                     float(item.quantity),
                     float(item.unit_price),
                     float(item.total_price),
-                    item.category,
                     list(item.tags),
                 )
 
@@ -647,6 +644,7 @@ class ReceiptDB:
             )
             for row in currency_rows
         ]
+
         def named(rows: list[Mapping[str, Any]]) -> list[NamedStatistics]:
             return [
                 NamedStatistics(

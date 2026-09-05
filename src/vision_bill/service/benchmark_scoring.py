@@ -8,9 +8,9 @@ from ..model.receipt import Receipt
 
 MONEY_TOLERANCE = Decimal("0.01")
 SCORING_VERSION = "1"
-# Bumped to 2: merchant name is now derived from printed text (not logos) and
-# the prompt ships the tag vocabulary with an option to suggest new tags.
-PROMPT_VERSION = "2"
+# Bumped to 3: the line-item `category` field was removed from the schema
+# embedded in the prompt (only the receipt carries a category now).
+PROMPT_VERSION = "3"
 COMPONENT_WEIGHTS = {"header": 0.20, "totals": 0.35, "line_items": 0.30, "taxes": 0.15}
 
 
