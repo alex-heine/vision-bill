@@ -510,6 +510,115 @@ async def test_search_products_calculates_unit_price_summary(
 
 
 @pytest.mark.asyncio
+async def test_search_products_cheapest_price_ignores_negative_refund_lines(
+    delegation_context: DelegationContext,
+) -> None:
+    """cheapest_price is the lowest non-negative unit price.
+
+    A Pfand refund line item is negative and must not be reported as the
+    cheapest price.
+    """
+    service, mock_db, _ = delegation_context
+    mock_db.search_products.return_value = [
+        ProductPurchase(
+            receipt_id=RECEIPT_ID,
+            description="Gouda",
+            merchant_name="Store A",
+            date=Date(2024, 3, 1),
+            quantity=1,
+            unit_price=Decimal("3.20"),
+            currency="EUR",
+        ),
+        ProductPurchase(
+            receipt_id=OTHER_RECEIPT_ID,
+            description="Gouda",
+            merchant_name="Store B",
+            date=Date(2024, 2, 1),
+            quantity=1,
+            unit_price=Decimal("2.80"),
+            currency="EUR",
+        ),
+        ProductPurchase(
+            receipt_id=RECEIPT_ID,
+            description="Pfand (Flaschen)",
+            merchant_name="Store A",
+            date=Date(2024, 3, 1),
+            quantity=1,
+            unit_price=Decimal("-0.25"),
+            currency="EUR",
+        ),
+    ]
+
+    result = await service.search_products("Gouda")
+
+    assert result.cheapest_price == Decimal("2.80")
+
+
+@pytest.mark.asyncio
+async def test_search_products_cheapest_price_none_when_only_refund_lines(
+    delegation_context: DelegationContext,
+) -> None:
+    """With no non-negative unit price to report, cheapest_price is None."""
+    service, mock_db, _ = delegation_context
+    mock_db.search_products.return_value = [
+        ProductPurchase(
+            receipt_id=RECEIPT_ID,
+            description="Pfand (Flaschen)",
+            merchant_name="Store A",
+            date=Date(2024, 3, 1),
+            quantity=1,
+            unit_price=Decimal("-0.25"),
+            currency="EUR",
+        ),
+        ProductPurchase(
+            receipt_id=OTHER_RECEIPT_ID,
+            description="Pfand (Flaschen)",
+            merchant_name="Store B",
+            date=Date(2024, 2, 1),
+            quantity=1,
+            unit_price=Decimal("-0.75"),
+            currency="EUR",
+        ),
+    ]
+
+    result = await service.search_products("Pfand")
+
+    assert result.cheapest_price is None
+
+
+@pytest.mark.asyncio
+async def test_search_products_cheapest_price_includes_free_lines(
+    delegation_context: DelegationContext,
+) -> None:
+    """A free (0.00) line item is non-negative, so it is the cheapest price."""
+    service, mock_db, _ = delegation_context
+    mock_db.search_products.return_value = [
+        ProductPurchase(
+            receipt_id=RECEIPT_ID,
+            description="Free Sample",
+            merchant_name="Store A",
+            date=Date(2024, 3, 1),
+            quantity=1,
+            unit_price=Decimal("0.00"),
+            currency="EUR",
+        ),
+        ProductPurchase(
+            receipt_id=OTHER_RECEIPT_ID,
+            description="Gouda",
+            merchant_name="Store B",
+            date=Date(2024, 2, 1),
+            quantity=1,
+            unit_price=Decimal("2.80"),
+            currency="EUR",
+        ),
+    ]
+
+    result = await service.search_products("Gouda")
+
+    assert result.cheapest_price == Decimal("0.00")
+
+
+@pytest.mark.asyncio
 async def test_get_receipt_with_details_delegates(
     delegation_context: DelegationContext,
 ) -> None:

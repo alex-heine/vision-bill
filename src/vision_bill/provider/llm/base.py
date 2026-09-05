@@ -93,6 +93,8 @@ class LLMProvider(ABC):
     use the best available written hint.
     {tag_instruction}
     Set the top-level category to the single best category for the whole purchase.
+    Use a negative unit_price and total_price for any line item that returns money to the customer
+    (a refund, a credit, or a deposit/Pfand that is given back).
     Do not add any additional text or commentary. Only provide the JSON response matching this schema:
 
     {Receipt.model_json_schema()}

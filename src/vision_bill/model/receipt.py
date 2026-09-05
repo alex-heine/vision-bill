@@ -22,8 +22,8 @@ MAX_TAG_LENGTH = 100
 class LineItem(BaseModel):
     description: str = Field(description="Name of the purchased item")
     quantity: float = Field(gt=0, description="Quantity purchased")
-    unit_price: Decimal = Field(ge=0, description="Price per unit")
-    total_price: Decimal = Field(ge=0, description="quantity * unit_price, line total")
+    unit_price: Decimal = Field(description="Price per unit")
+    total_price: Decimal = Field(description="quantity * unit_price, line total")
     tags: list[str] = Field(
         default_factory=list,
         description=(
@@ -79,18 +79,18 @@ class Receipt(BaseModel):
     date: Date = Field(description="Date of purchase, ISO format YYYY-MM-DD")
     time: str | None = Field(default=None, description="Time of purchase, HH:MM 24h format")
 
-    currency: str = Field(default="USD", description="ISO 4217 currency code, e.g. USD, EUR")
+    currency: str = Field(default="EUR", description="ISO 4217 currency code, e.g. USD, EUR")
     category: Category = Field(
         default="other", description="Best-guess category for the whole purchase"
     )
     line_items: list[LineItem] = Field(description="All purchased items")
     taxes: list[TaxLine] = Field(default_factory=list, description="Tax lines applied")
 
-    subtotal: Decimal = Field(ge=0, description="Sum of line items before tax/discounts")
+    subtotal: Decimal = Field(description="Sum of line items before tax/discounts")
     discount_total: Decimal = Field(default=Decimal(0), ge=0, description="Total discounts applied")
     tax_total: Decimal = Field(default=Decimal(0), ge=0, description="Sum of all taxes")
     tip: Decimal | None = Field(default=None, ge=0, description="Tip/gratuity if applicable")
-    total: Decimal = Field(ge=0, description="Final amount charged")
+    total: Decimal = Field(description="Final amount charged")
 
     payment_method: Literal[
         "cash", "credit_card", "debit_card", "mobile_payment", "check", "other", "unknown"
