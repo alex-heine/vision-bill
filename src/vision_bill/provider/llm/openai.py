@@ -1,8 +1,10 @@
+import base64
 import json
 import logging
+import mimetypes
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from ...helper.logging_config import setup_logging
 
@@ -22,8 +24,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 RETRY_LIMIT = 3
-REASONING_EFFORT = "low"
+# Typed as a literal so it matches the SDK's reasoning_effort parameter type.
+REASONING_EFFORT: Literal["low"] = "low"
 VISION_CAPABILITY_FIELDS = ("multimodal", "vision")
+DEFAULT_IMAGE_MIME = "image/jpeg"
 
 
 def _format_parameter_size(n_params: int) -> str:
@@ -136,12 +140,37 @@ class OpenAIProvider(LLMProvider):
 
         return result
 
-    # The methods below get their real implementations in follow-up tasks;
-    # these typed stubs keep the class instantiable in the meantime.
+    async def send_message(self, model_id: str, messages: Sequence[Mapping[str, Any]]) -> str:
+        # Plain dicts are exactly what the SDK serializes (verified against
+        # the live server); cast() satisfies the TypedDict-parameter overloads.
+        response = await self._client.chat.completions.create(
+            model=model_id,
+            messages=cast(Any, messages),
+            temperature=self._temperature,
+            reasoning_effort=REASONING_EFFORT,
+        )
+        return response.choices[0].message.content or ""
+
+    def _build_image_messages(
+        self, image: Path, tags: Sequence[str] | None = None
+    ) -> list[dict[str, Any]]:
+        if not image.exists():
+            raise FileNotFoundError(f"Image not found at: {image}")
+        mime = mimetypes.guess_type(image.name)[0] or DEFAULT_IMAGE_MIME
+        image_b64 = base64.b64encode(image.read_bytes()).decode("utf-8")
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": self.build_prompt(tags)},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_b64}"}},
+                ],
+            }
+        ]
+
+    # The method below gets its real implementation in a follow-up task;
+    # this typed stub keeps the class instantiable in the meantime.
     async def analyse_receipt_from_model(
         self, model_id: str, image: Path, tags: Sequence[str] | None = None
     ) -> Receipt:
-        raise NotImplementedError
-
-    async def send_message(self, model_id: str, messages: Sequence[Mapping[str, Any]]) -> str:
         raise NotImplementedError
