@@ -290,7 +290,6 @@ def _make_receipt() -> Receipt:
                 quantity=2,
                 unit_price=Decimal("10.00"),
                 total_price=Decimal("20.00"),
-                category="grocery",
                 tags=["test"],
             )
         ],
@@ -442,9 +441,7 @@ async def test_get_receipt_by_id_delegates(delegation_context: DelegationContext
 
     result = await service.get_receipt_by_id(RECEIPT_ID)
 
-    mock_db.get_receipt_by_id.assert_awaited_once_with(
-        RECEIPT_ID, user_id=None, can_see_all=False
-    )
+    mock_db.get_receipt_by_id.assert_awaited_once_with(RECEIPT_ID, user_id=None, can_see_all=False)
     assert result is row
 
 
@@ -503,9 +500,7 @@ async def test_search_products_calculates_unit_price_summary(
 
     result = await service.search_products("Gouda")
 
-    mock_db.search_products.assert_awaited_once_with(
-        "Gouda", user_id=None, can_see_all=False
-    )
+    mock_db.search_products.assert_awaited_once_with("Gouda", user_id=None, can_see_all=False)
     assert result.query == "Gouda"
     assert result.purchases == purchases
     assert result.latest_price == Decimal("3.20")
@@ -555,9 +550,7 @@ async def test_verify_receipt_delegates(delegation_context: DelegationContext) -
 
     result = await service.verify_receipt(RECEIPT_ID)
 
-    mock_db.verify_receipt.assert_awaited_once_with(
-        RECEIPT_ID, user_id=None, can_see_all=False
-    )
+    mock_db.verify_receipt.assert_awaited_once_with(RECEIPT_ID, user_id=None, can_see_all=False)
     assert result is row
 
 

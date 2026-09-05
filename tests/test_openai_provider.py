@@ -318,7 +318,7 @@ VALID_RECEIPT_JSON = (
     '{"confidence": 95, "merchant_name": "Test Shop", "merchant_address": "123 Main St", '
     '"receipt_number": "REC001", "date": "2024-08-06", "time": "14:00", "currency": "USD", '
     '"line_items": [{"description": "Coffee", "quantity": 1, "unit_price": 5.00, '
-    '"total_price": 5.00, "category": "restaurant"}], '
+    '"total_price": 5.00}], '
     '"taxes": [{"name": "VAT", "rate": 0.20, "amount": 1.00}], "subtotal": 5.00, '
     '"discount_total": 0.00, "tax_total": 1.00, "tip": 0.50, "total": 6.50, '
     '"payment_method": "credit_card"}'
