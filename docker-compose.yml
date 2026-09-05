@@ -9,9 +9,11 @@ services:
       PG__HOST: db
       PG__PORT: "5432"
     ports:
-      - "8080:8080"
+      - "${API__PORT:-8080}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - postgres_net
     depends_on:
       db:
         condition: service_healthy
@@ -27,19 +29,52 @@ services:
 
   db:
     image: postgres:18
-    ports:
-      - "54321:5432"
+    container_name: postgres
+    pull_policy: always # re-pull latest 18.x tag whenever `docker compose up` runs
+    restart: unless-stopped # auto-start on host/Docker reboot
     environment:
       POSTGRES_USER: ${PG__USER}
       POSTGRES_PASSWORD: ${PG__PASSWORD}
       POSTGRES_DB: ${PG__DB}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    networks:
+      - postgres_net
+    # No `ports:` section on purpose - nothing is published to the NAS host.
+    # Other containers reach this one only via the internal `postgres_net`
+    # network, at hostname "postgres", port 5432.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=80
+      - -c
+      - wal_compression=on
+      - -c
+      - log_connections=on
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${PG__USER} -d ${PG__DB}"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     volumes:
       - db_data:/var/lib/postgresql
 
 volumes:
   db_data:
+
+networks:
+  postgres_net:
+    name: postgres_net
+    driver: bridge
