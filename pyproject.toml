@@ -19,6 +19,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.52",
     "stream-zip>=0.0.84",
     "uvicorn>=0.47.0",
+    "openai>=3.8.0",
 ]
 
 [project.optional-dependencies]
