@@ -8,6 +8,16 @@ def get_llm_provider(llm_settings: LLMSettings) -> LLMProvider:
 
     if provider == LLMProviderEnum.OLLAMA:
         from .llm.ollama import OllamaProvider
+
         return OllamaProvider(host=llm_settings.host, temperature=llm_settings.temperature)
+
+    if provider == LLMProviderEnum.OPENAI:
+        from .llm.openai import OpenAIProvider
+
+        return OpenAIProvider(
+            host=llm_settings.host,
+            api_key=llm_settings.api_key,
+            temperature=llm_settings.temperature,
+        )
 
     raise ValueError(f"Unsupported LLM provider: {provider}")

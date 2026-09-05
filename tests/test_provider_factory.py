@@ -5,17 +5,19 @@ import pytest
 from vision_bill.config import LLMProviderEnum
 from vision_bill.provider.factory import get_llm_provider
 from vision_bill.provider.llm.ollama import OllamaProvider
+from vision_bill.provider.llm.openai import OpenAIProvider
 
 
 @pytest.mark.parametrize(
     "provider_enum, expected_class",
     [
         (LLMProviderEnum.OLLAMA, OllamaProvider),
+        (LLMProviderEnum.OPENAI, OpenAIProvider),
     ],
 )
 async def test_get_llm_provider_success(settings, provider_enum, expected_class):
-    """Test that the correct provider is returned for OLLAMA."""
-    # The settings fixture from conftest already defaults to ollama in its nested config.
+    """Test that the correct provider is returned for each implemented provider."""
+    settings.llm.provider = provider_enum
     provider = get_llm_provider(settings.llm)
     assert isinstance(provider, expected_class)
 
