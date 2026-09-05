@@ -1,3 +1,19 @@
+# ── Stage 1: build the SvelteKit SPA ──────────────────────────────────────
+# The built frontend is a git-ignored artifact, so a bare `git clone` has no
+# static files. We compile it here at image-build time so the image is
+# self-contained: rebuilding the image always ships the latest UI.
+FROM node:24-slim AS frontend
+WORKDIR /build/frontend
+
+# Locked dependencies first so this layer is cached until the lockfile changes.
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+RUN npm ci --no-audit --no-fund
+
+# Full frontend source, then produce the static SPA in /build/frontend/out.
+COPY frontend/ ./
+RUN npm run build
+
+# ── Stage 2: Python API ────────────────────────────────────────────────────
 FROM python:3.12-slim
 
 # Install uv (grabbed from the official distroless image, no extra deps needed)
@@ -17,6 +33,9 @@ COPY ./src ./src
 COPY alembic.ini ./
 COPY ./alembic ./alembic
 
+# Bake the built SPA into the package's static dir (served by FastAPI at /).
+COPY --from=frontend /build/frontend/out/. ./src/vision_bill/static/
+
 RUN apt update && apt install -y --no-install-recommends libmagic1 && rm -rf /var/lib/apt/lists/*
 
 # Install the project itself (editable, matches the lockfile)
@@ -27,4 +46,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8080
 
-CMD ["uvicorn", "src.vision_bill.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+CMD ["uvicorn", "src.vision_bill.main:app", "--host", "0.0.0.0", "--port", "8080"]
