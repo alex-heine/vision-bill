@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from vision_bill.model.receipt import MAX_TAG_LENGTH, LineItem
+from vision_bill.model.receipt import MAX_TAG_LENGTH, LineItem, Receipt
 
 
 def _line_item(**overrides: object) -> LineItem:
@@ -39,3 +39,15 @@ def test_line_item_tag_sanitization(raw: list[str], expected: list[str]) -> None
 
 def test_line_item_tags_default_to_empty() -> None:
     assert _line_item().tags == []
+
+
+def test_line_item_has_no_category_field() -> None:
+    """Only the receipt carries a category; line items use tags instead."""
+    assert "category" not in LineItem.model_fields
+
+
+def test_receipt_schema_keeps_only_receipt_level_category() -> None:
+    """The LLM JSON schema exposes category on the receipt, not on line items."""
+    schema = Receipt.model_json_schema()
+    assert "category" not in schema["$defs"]["LineItem"]["properties"]
+    assert "category" in schema["properties"]

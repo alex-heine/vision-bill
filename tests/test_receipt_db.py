@@ -83,7 +83,6 @@ def _line_item_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
         "quantity": Decimal("2.0000"),
         "unit_price": Decimal("10.00"),
         "total_price": Decimal("20.00"),
-        "category": "other",
         "tags": ["test"],
     }
 
@@ -114,7 +113,6 @@ def _make_receipt(merchant_name: str = "Test Store") -> Receipt:
                 quantity=2,
                 unit_price=Decimal("10.00"),
                 total_price=Decimal("20.00"),
-                category="grocery",
                 tags=["test"],
             )
         ],
@@ -220,9 +218,7 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     """persist_receipt should insert receipt + line items + taxes."""
     mock_conn = AsyncMock()
     db._pool = _make_pool(mock_conn)
-    mock_conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(image_id=IMAGE_ID, category="grocery")
-    )
+    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_id=IMAGE_ID, category="grocery"))
     mock_conn.execute = AsyncMock()
 
     receipt = _make_receipt()
@@ -374,7 +370,6 @@ async def test_get_receipt_with_details(db: ReceiptDB) -> None:
     assert len(details.line_items) == 1
     assert details.line_items[0].description == "Item A"
     assert details.line_items[0].quantity == 2.0
-    assert details.line_items[0].category == "other"
     assert details.line_items[0].tags == ["test"]
     assert len(details.taxes) == 1
     assert details.taxes[0].rate == 0.19
@@ -551,3 +546,8 @@ async def test_create_tag_existing_is_not_an_error(db: ReceiptDB) -> None:
     # The insert must be conflict-safe, not a plain INSERT.
     insert_sql = mock_conn.fetchrow.await_args.args[0]
     assert "ON CONFLICT (name) DO NOTHING" in insert_sql
+
+
+def test_insert_line_item_sql_has_no_category_column() -> None:
+    """Line items no longer persist a category; the receipt owns it."""
+    assert "category" not in INSERT_LINE_ITEM_SQL

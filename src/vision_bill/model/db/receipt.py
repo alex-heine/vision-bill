@@ -39,7 +39,6 @@ class LineItemRow(BaseModel):
     quantity: float
     unit_price: Decimal
     total_price: Decimal
-    category: str = "other"
     tags: list[str] = Field(default_factory=list)
 
 
