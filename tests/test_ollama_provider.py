@@ -80,7 +80,7 @@ async def test_get_available_models(mock_client):
 async def test_analyse_receipt_from_model_success(mock_client):
     # Arrange
     provider = OllamaProvider(host="http://localhost:11434")
-    content = '{"confidence": 95, "merchant_name": "Test Shop", "merchant_address": "123 Main St", "receipt_number": "REC001", "date": "2024-08-06", "time": "14:00", "currency": "USD", "line_items": [{"description": "Coffee", "quantity": 1, "unit_price": 5.00, "total_price": 5.00, "category": "restaurant"}], "taxes": [{"name": "VAT", "rate": 0.20, "amount": 1.00}], "subtotal": 5.00, "discount_total": 0.00, "tax_total": 1.00, "tip": 0.50, "total": 6.50, "payment_method": "credit_card"}'
+    content = '{"confidence": 95, "merchant_name": "Test Shop", "merchant_address": "123 Main St", "receipt_number": "REC001", "date": "2024-08-06", "time": "14:00", "currency": "USD", "line_items": [{"description": "Coffee", "quantity": 1, "unit_price": 5.00, "total_price": 5.00}], "taxes": [{"name": "VAT", "rate": 0.20, "amount": 1.00}], "subtotal": 5.00, "discount_total": 0.00, "tax_total": 1.00, "tip": 0.50, "total": 6.50, "payment_method": "credit_card"}'
 
     # The chat() method is awaited in production code
     mock_client.chat.return_value = MagicMock(message=MagicMock(content=content))
@@ -104,7 +104,7 @@ async def test_analyse_receipt_from_model_retry_empty(mock_client):
         MagicMock(message=MagicMock(content="")),
         MagicMock(
             message=MagicMock(
-                content='{"confidence": 95, "merchant_name": "Retry Shop", "merchant_address": "123 Retry St", "receipt_number": "REC002", "date": "2024-08-06", "time": "15:00", "currency": "USD", "line_items": [{"description": "Retry Item", "quantity": 1, "unit_price": 1.0, "total_price": 1.0, "category": "other"}], "taxes": [], "subtotal": 1.0, "discount_total": 0.0, "tax_total": 0.0, "tip": 0.0, "total": 1.0, "payment_method": "credit_card"}'
+                content='{"confidence": 95, "merchant_name": "Retry Shop", "merchant_address": "123 Retry St", "receipt_number": "REC002", "date": "2024-08-06", "time": "15:00", "currency": "USD", "line_items": [{"description": "Retry Item", "quantity": 1, "unit_price": 1.0, "total_price": 1.0}], "taxes": [], "subtotal": 1.0, "discount_total": 0.0, "tax_total": 0.0, "tip": 0.0, "total": 1.0, "payment_method": "credit_card"}'
             )
         ),
     ]
@@ -137,7 +137,7 @@ async def test_analyse_receipt_from_model_repair(mock_client):
     provider = OllamaProvider(host="http://localhost:11434")
 
     bad_content = '{"merchant": "Bad JSON"'  # Missing closing brace
-    good_content = '{"confidence": 95, "merchant_name": "Fixed Shop", "merchant_address": "123 Fix St", "receipt_number": "REC002", "date": "2024-08-06", "time": "15:00", "currency": "USD", "line_items": [{"description": "Repair Item", "quantity": 1, "unit_price": 5.00, "total_price": 5.00, "category": "other"}], "taxes": [], "subtotal": 5.00, "discount_total": 0.00, "tax_total": 0.00, "tip": 0.00, "total": 5.00, "payment_method": "credit_card"}'
+    good_content = '{"confidence": 95, "merchant_name": "Fixed Shop", "merchant_address": "123 Fix St", "receipt_number": "REC002", "date": "2024-08-06", "time": "15:00", "currency": "USD", "line_items": [{"description": "Repair Item", "quantity": 1, "unit_price": 5.00, "total_price": 5.00}], "taxes": [], "subtotal": 5.00, "discount_total": 0.00, "tax_total": 0.00, "tip": 0.00, "total": 5.00, "payment_method": "credit_card"}'
 
     mock_client.chat.side_effect = [
         MagicMock(message=MagicMock(content=bad_content)),
