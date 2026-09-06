@@ -21,10 +21,6 @@ services:
       - ./server_data/logs:/app/logs
       - ./server_data/uploads:/app/uploads
       - ./server_data/config:/app/config
-    command:
-      - sh
-      - -c
-      - uv run alembic upgrade head && uv run uvicorn src.vision_bill.main:app --host 0.0.0.0 --port 8080
 
   db:
     image: postgres:18
