@@ -622,3 +622,21 @@ async def test_create_tag_existing_is_not_an_error(db: ReceiptDB) -> None:
 def test_insert_line_item_sql_has_no_category_column() -> None:
     """Line items no longer persist a category; the receipt owns it."""
     assert "category" not in INSERT_LINE_ITEM_SQL
+
+
+@pytest.mark.asyncio
+async def test_get_statistics_scopes_to_collection(db: ReceiptDB) -> None:
+    """When collection_id is set, every STATS query gains the EXISTS scope."""
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[])  # all six queries return empty
+    db._pool = _make_pool(conn)
+    coll_id = UUID("00000000-0000-4000-8000-0000000000c1")
+    await db.get_statistics(
+        user_id=UUID("00000000-0000-4000-8000-00000000000a"), weeks=12, collection_id=coll_id
+    )
+    first_sql = conn.fetch.call_args_list[0].args[0]
+    assert "EXISTS" in first_sql
+    assert "receipt_collections" in first_sql
+    # collection id is a bound parameter, not interpolated
+    args = conn.fetch.call_args_list[0].args[1:]
+    assert coll_id in args

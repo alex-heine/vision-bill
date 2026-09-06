@@ -200,12 +200,14 @@ class ReceiptService:
         user_id: UUID | None = None,
         can_see_all: bool = False,
         weeks: int = 12,
+        collection_id: UUID | None = None,
     ) -> ReceiptStatistics:
         """Return verified receipt aggregates scoped to the current user."""
         return await self._db.get_statistics(
             user_id=user_id,
             can_see_all=can_see_all,
             weeks=weeks,
+            collection_id=collection_id,
         )
 
     async def get_receipt_with_details(

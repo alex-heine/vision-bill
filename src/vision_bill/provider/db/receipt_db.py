@@ -592,6 +592,7 @@ class ReceiptDB:
         user_id: UUID | None = None,
         can_see_all: bool = False,
         weeks: int = 12,
+        collection_id: UUID | None = None,
     ) -> ReceiptStatistics:
         """Aggregate verified receipts for the statistics and dashboard views."""
         scope = ""
@@ -599,6 +600,12 @@ class ReceiptDB:
         if not can_see_all and user_id is not None:
             scope_args.append(user_id)
             scope = f" AND user_id = ${len(scope_args)}"
+        if collection_id is not None:
+            scope_args.append(collection_id)
+            scope += (
+                f" AND EXISTS (SELECT 1 FROM receipt_collections rc "
+                f"WHERE rc.receipt_id = receipts.id AND rc.collection_id = ${len(scope_args)})"
+            )
 
         weekly_args = [*scope_args, max(weeks - 1, 0)]
         weekly_sql = STATS_WEEKLY_SQL.format(
