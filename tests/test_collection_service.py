@@ -90,6 +90,23 @@ async def test_update_omitted_fields_keep_current() -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_same_name_is_not_conflict() -> None:
+    svc, db = _service()
+    current = type(
+        "C",
+        (),
+        {"id": CID, "name": "Berlin", "color": "#111", "start_date": None, "end_date": None},
+    )()
+    db.get = AsyncMock(return_value=current)
+    # find_by_name returns the SAME collection (self) -> resubmitting its own name
+    # (e.g. a color-only change) must NOT be a conflict.
+    db.find_by_name = AsyncMock(return_value=current)
+    db.update = AsyncMock(return_value=current)
+    await svc.update(CID, CollectionUpdate(name="Berlin", color="#222"), UID, can_see_all=False)
+    db.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_activate_delegates() -> None:
     svc, db = _service()
     db.activate = AsyncMock(return_value=object())

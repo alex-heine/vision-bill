@@ -1,6 +1,5 @@
 """Business logic for collections: validation, uniqueness, delegation to CollectionDB."""
 
-import logging
 from datetime import date
 from uuid import UUID
 
@@ -15,8 +14,6 @@ from ..model.collection import (
 )
 from ..provider.db.collection_db import CollectionDB
 from .receipt_service import ReceiptService
-
-logger = logging.getLogger(__name__)
 
 
 class NameConflictError(Exception):
@@ -98,12 +95,14 @@ class CollectionService:
         if color is not None and not is_valid_hex_color(color):
             raise ValueError("color must be a hex value like #RGB or #RRGGBB")
         _validate_dates(start, end)
-        if (
-            body.name is not None
-            and await self._db.find_by_name(user_id if user_id is not None else UUID(int=0), name)
-            is not None
-        ):
-            raise NameConflictError(f"A collection named '{name}' already exists")
+        if body.name is not None:
+            existing = await self._db.find_by_name(
+                user_id if user_id is not None else UUID(int=0), name
+            )
+            # A rename to the collection's own name (incl. a case variant) is not a
+            # conflict — only a *different* collection with the same name is.
+            if existing is not None and existing.id != collection_id:
+                raise NameConflictError(f"A collection named '{name}' already exists")
         return await self._db.update(collection_id, user_id, can_see_all, name, color, start, end)
 
     async def delete(self, collection_id: UUID, user_id: UUID | None, can_see_all: bool) -> bool:
