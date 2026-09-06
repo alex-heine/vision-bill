@@ -20,8 +20,23 @@ migrate: ## Apply database migrations
 run: ## Run the API locally with auto-reload
 	uv run uvicorn src.vision_bill.main:app --host 0.0.0.0 --port 8080 --reload --reload-dir ./src/vision_bill
 
-docker-build: ## Build the Docker image
-	docker build -t vision-bill .
+# Docker Hub target for a future `make docker-push` (push is skipped for now).
+# `docker-build` always tags vision-bill:latest locally; it also tags the full
+# Hub name only when a username is provided, e.g.:
+#   make docker-build DOCKER_USER=me
+#   make docker-build DOCKER_USER=me DOCKER_TAG=v1.0
+DOCKER_REGISTRY ?= docker.io
+DOCKER_USER ?=
+DOCKER_REPO ?= vision-bill
+DOCKER_TAG ?= latest
+ifeq ($(strip $(DOCKER_USER)),)
+IMAGE :=
+else
+IMAGE := $(DOCKER_REGISTRY)/$(DOCKER_USER)/$(DOCKER_REPO):$(DOCKER_TAG)
+endif
+
+docker-build: ## Build the image (personal data excluded via .dockerignore)
+	docker build -t vision-bill:$(DOCKER_TAG) $(if $(IMAGE),-t $(IMAGE)) .
 
 docker-up: ## Build image + start app and postgres
 	docker compose up --build
