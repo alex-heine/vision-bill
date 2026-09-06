@@ -12,6 +12,7 @@ from fastapi import UploadFile
 
 from vision_bill.config import Settings
 from vision_bill.model.db.image import ImageRow
+from vision_bill.model.collection import Collection
 from vision_bill.model.db.receipt import ReceiptRow
 from vision_bill.model.receipt import LineItem, Receipt, TaxLine
 from vision_bill.model.search import ProductPurchase
@@ -854,3 +855,56 @@ async def test_delete_image_row_delegates(delegation_context: DelegationContext)
     await service.delete_image_row(IMAGE_ID)
 
     mock_image_db.delete_image.assert_awaited_once_with(IMAGE_ID)
+
+
+# ── Auto-capture into the active collection ────────────────────────────
+
+OWNER_ID = UUID("00000000-0000-4000-8000-00000000000a")
+ACTIVE_COLLECTION_ID = UUID("00000000-0000-4000-8000-0000000000c1")
+
+
+def _active_collection() -> "Collection":
+    return Collection(id=ACTIVE_COLLECTION_ID, name="Berlin", active=True)
+
+
+@pytest.mark.asyncio
+async def test_persist_receipt_captures_to_active_collection(delegation_context) -> None:
+    service, mock_db, _ = delegation_context
+    row = _make_row()
+    mock_db.persist_receipt = AsyncMock(return_value=row)
+    coll_db = AsyncMock()
+    coll_db.active_collection = AsyncMock(return_value=_active_collection())
+    coll_db.assign = AsyncMock()
+    service.set_collection_db(coll_db)
+
+    result = await service.persist_receipt(_make_receipt(), user_id=OWNER_ID)
+
+    assert result is not None
+    coll_db.active_collection.assert_awaited_once_with(OWNER_ID, can_see_all=False)
+    coll_db.assign.assert_awaited_once_with(ACTIVE_COLLECTION_ID, RECEIPT_ID)
+
+
+@pytest.mark.asyncio
+async def test_persist_receipt_without_owner_not_captured(delegation_context) -> None:
+    service, mock_db, _ = delegation_context
+    mock_db.persist_receipt = AsyncMock(return_value=_make_row())
+    coll_db = AsyncMock()
+    service.set_collection_db(coll_db)
+
+    await service.persist_receipt(_make_receipt(), user_id=None)
+
+    coll_db.active_collection.assert_not_called()
+    coll_db.assign.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_persist_receipt_capture_failure_is_fail_safe(delegation_context) -> None:
+    service, mock_db, _ = delegation_context
+    mock_db.persist_receipt = AsyncMock(return_value=_make_row())
+    coll_db = AsyncMock()
+    coll_db.active_collection = AsyncMock(side_effect=RuntimeError("boom"))
+    service.set_collection_db(coll_db)
+
+    row = await service.persist_receipt(_make_receipt(), user_id=OWNER_ID)  # must not raise
+
+    assert row is not None

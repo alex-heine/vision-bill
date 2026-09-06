@@ -15,6 +15,7 @@ from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
 from ..model.search import ProductSearchResponse
 from ..model.statistics import ReceiptStatistics
+from ..provider.db.collection_db import CollectionDB
 from ..provider.db.image_db import ImageDB
 from ..provider.db.receipt_db import ReceiptDB
 from ..provider.db.user_db import UserDB
@@ -49,6 +50,7 @@ class ReceiptService:
         self._db = ReceiptDB(pg_settings)
         self._image_db = ImageDB(pg_settings)
         self._user_db = UserDB(pg_settings)
+        self._collection_db: CollectionDB | None = None
 
     # ── Database delegation ──────────────────────────────────────────
 
@@ -107,9 +109,31 @@ class ReceiptService:
         verified: bool = False,
         user_id: UUID | None = None,
     ) -> ReceiptRow:
-        return await self._db.persist_receipt(
+        row = await self._db.persist_receipt(
             receipt, image_id=image_id, status=status, verified=verified, user_id=user_id
         )
+        await self._capture_to_active(row.id, user_id)
+        return row
+
+    def set_collection_db(self, collection_db: CollectionDB) -> None:
+        """Attach a CollectionDB so persisted receipts can be auto-captured
+        into the caller's active collection (fail-safe)."""
+        self._collection_db = collection_db
+
+    async def _capture_to_active(self, receipt_id: UUID, user_id: UUID | None) -> None:
+        """Assign a freshly persisted receipt to the user's active collection.
+
+        Fail-safe: any error (or no active collection / no owner) is logged and
+        swallowed so the capture can never break the core persistence flow.
+        """
+        if user_id is None or self._collection_db is None:
+            return
+        try:
+            active = await self._collection_db.active_collection(user_id, can_see_all=False)
+            if active is not None:
+                await self._collection_db.assign(active.id, receipt_id)
+        except Exception:
+            logger.warning("auto-capture to active collection failed", exc_info=True)
 
     async def get_receipt_by_id(
         self, receipt_id: UUID, user_id: UUID | None = None, can_see_all: bool = False
