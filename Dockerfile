@@ -46,8 +46,13 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8080
 
-# Migrate the schema, then start the API. Running migrations here (rather than
-# only in docker-compose) makes the image self-sufficient: `docker run` on a
-# fresh DB works, and new migrations apply on upgrade. docker-compose's
+# Entrypoint migrates the schema, then execs the CMD below (uvicorn) as PID 1
+# so `docker stop` reaches it for a graceful shutdown (satisfies BuildKit's
+# JSONArgsRecommended check, which a shell-form `CMD … && …` cannot). Running
+# the migration here keeps the image self-sufficient: `docker run` on a fresh
+# DB works, and new migrations apply on upgrade. docker-compose's
 # `depends_on: db: service_healthy` gate keeps this safe when orchestrated.
-CMD uv run alembic upgrade head && uv run uvicorn src.vision_bill.main:app --host 0.0.0.0 --port 8080
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["uvicorn", "src.vision_bill.main:app", "--host", "0.0.0.0", "--port", "8080"]

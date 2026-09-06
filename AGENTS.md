@@ -142,7 +142,7 @@ A SvelteKit SPA is served from `src/vision_bill/static` with an `index.html` fal
 - Receipts carry a workflow: `status` (`unverified` → `verified`) plus `confidence` and `verified` columns; the image lives in tmp storage until `verify` (or bypass-review upload) moves it to permanent storage.
 - Before starting the app: `uv run alembic upgrade head` (safe on existing DBs — migration 0001 uses `IF NOT EXISTS`).
 - New migration: `uv run alembic revision -m "message"`, then edit `alembic/versions/<rev>_<message>.py` with explicit SQL.
-- Docker Compose runs `alembic upgrade head` automatically before uvicorn.
+- The image entrypoint (`docker-entrypoint.sh`) runs `alembic upgrade head` automatically before uvicorn, so both `docker compose up` and a bare `docker run` migrate on start.
 - Deployment identity model (see `scripts/README.md` + `make db-configure-roles`): an owner/migration login for Alembic, a `vision_bill_runtime` group for the app, and a `vision_bill_readonly` group for reporting. The app cannot run as the read-only role.
 
 ## Development Workflow
@@ -177,7 +177,7 @@ Additional notes:
 - `Dockerfile`: multi-stage — stage 1 (`node:24-slim`) builds the SvelteKit SPA; stage 2 (`python:3.12-slim` + uv) installs Python deps frozen from `uv.lock`, copies the app + Alembic tooling, bakes the built SPA into `src/vision_bill/static`, and installs `libmagic1` for python-magic.
 - `docker-compose.yml`: app (`vision_bill`) + `postgres:18` (healthcheck-gated; **no host port published** — reachable only via the internal `postgres_net` bridge at hostname `db`). Postgres runs with explicit tuning (shared_buffers, max_connections, ...) and a 512M memory limit.
 - App container: `env_file: .env`; mounts `./server_data/logs` → `/app/logs`, `./server_data/uploads` → `/app/uploads`, `./server_data/config` → `/app/config`; uses `host.docker.internal:host-gateway` so it can reach Ollama on the host; host port `${API__PORT:-8080}:8080`.
-- The container command runs `uv run alembic upgrade head` before uvicorn.
+- The image entrypoint (`docker-entrypoint.sh`, a JSON-form `ENTRYPOINT` + `CMD`) runs `uv run alembic upgrade head` then `exec`s uvicorn as PID 1 for graceful shutdown.
 - `docker-compose.image-stichter.yml` + `image-sticher/`: optional nginx-served image-stitching frontend on port 8081.
 - `docs/deploy/truenas/`: full NAS (TrueNAS) deployment guide (compose files, env templates, systemd-style stack service, DB provisioning).
 

@@ -4,6 +4,9 @@
 # The Dockerfile itself
 !Dockerfile
 
+# Entrypoint script (migrates, then execs the CMD)
+!docker-entrypoint.sh
+
 # Root config files the build reads
 !pyproject.toml
 !uv.lock
