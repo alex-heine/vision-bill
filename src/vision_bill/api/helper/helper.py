@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request
 from ...provider.db.user_db import UserDB
 from ...service.analysis_scheduler import AnalysisScheduler
 from ...service.benchmark_service import BenchmarkService
+from ...service.collection_service import CollectionService
 from ...service.image_service import ImageService
 from ...service.receipt_service import ReceiptService
 
@@ -34,3 +35,10 @@ def get_benchmark_service(request: Request) -> BenchmarkService:
     if service is None:
         raise HTTPException(status_code=503, detail="Database is unavailable")
     return cast("BenchmarkService", service)
+
+
+def get_collection_service(request: Request) -> CollectionService:
+    service = getattr(request.app.state, "collection_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Database is unavailable")
+    return cast("CollectionService", service)

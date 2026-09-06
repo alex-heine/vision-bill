@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 
 from .api.auth import router as auth_router
 from .api.benchmarks import router as benchmark_router
+from .api.collections import router as collections_router
 from .api.images import router as image_router
 from .api.receipts import router as receipt_router
 from .api.search import router as search_router
@@ -18,11 +19,13 @@ from .api.system.main import router as system_router
 from .api.tags import router as tags_router
 from .config import Settings, mark_startup_settings, settings
 from .helper.logging_config import setup_logging
+from .provider.db.collection_db import CollectionDB
 from .provider.db.user_db import UserDB
 from .provider.factory import get_llm_provider
 from .security.password import hash_password
 from .service.analysis_scheduler import AnalysisScheduler
 from .service.benchmark_service import BenchmarkService
+from .service.collection_service import CollectionService
 from .service.image_service import ImageService
 from .service.receipt_service import ReceiptService
 
@@ -86,6 +89,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     benchmark_service = (
         BenchmarkService(provider, receipt_service) if receipt_service.db_ready else None
     )
+    collection_service = CollectionService(receipt_service) if receipt_service.db_ready else None
+    if collection_service is not None:
+        receipt_service.set_collection_db(CollectionDB(receipt_service.pool))
 
     app.state.receipt_service = receipt_service
     app.state.image_service = image_service
@@ -93,6 +99,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.user_db = receipt_service.user_db
     app.state.analysis_scheduler = scheduler
     app.state.benchmark_service = benchmark_service
+    app.state.collection_service = collection_service
 
     await scheduler.start()
     if benchmark_service is not None:
@@ -120,6 +127,7 @@ app.include_router(search_router, prefix="/api/v1/search", tags=["Search"])
 app.include_router(statistics_router, prefix="/api/v1/statistics", tags=["Statistics"])
 app.include_router(benchmark_router, prefix="/api/v1/benchmarks", tags=["Benchmarks"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["Tags"])
+app.include_router(collections_router, prefix="/api/v1/collections", tags=["Collections"])
 # System routes
 app.include_router(system_router, prefix="/api/v1/system", tags=["System"])
 # LLM routes
