@@ -22,6 +22,7 @@ def _service() -> tuple[CollectionService, AsyncMock]:
     svc = CollectionService.__new__(CollectionService)
     db = AsyncMock()
     svc._db = db
+    svc._receipt_service = AsyncMock()
     return svc, db
 
 
@@ -72,6 +73,31 @@ async def test_assign_missing_collection_raises_not_found() -> None:
     db.exists = AsyncMock(return_value=False)
     with pytest.raises(NotFoundError):
         await svc.assign(CID, RID, UID, can_see_all=False)
+
+
+@pytest.mark.asyncio
+async def test_assign_foreign_receipt_raises_not_found() -> None:
+    """A caller may only attach receipts they can see; a foreign receipt_id must
+    not be linkable to their own collection (cross-user data leak)."""
+    svc, db = _service()
+    db.exists = AsyncMock(return_value=True)  # collection belongs to caller
+    svc._receipt_service.get_receipt_by_id = AsyncMock(return_value=None)  # foreign receipt
+    with pytest.raises(NotFoundError):
+        await svc.assign(CID, RID, UID, can_see_all=False)
+    db.assign.assert_not_called()
+    svc._receipt_service.get_receipt_by_id.assert_awaited_once_with(
+        RID, user_id=UID, can_see_all=False
+    )
+
+
+@pytest.mark.asyncio
+async def test_assign_own_receipt_delegates() -> None:
+    svc, db = _service()
+    db.exists = AsyncMock(return_value=True)
+    svc._receipt_service.get_receipt_by_id = AsyncMock(return_value=object())  # caller's receipt
+    db.assign = AsyncMock()
+    await svc.assign(CID, RID, UID, can_see_all=False)
+    db.assign.assert_awaited_once_with(CID, RID)
 
 
 @pytest.mark.asyncio

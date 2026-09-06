@@ -113,6 +113,14 @@ class CollectionService:
     ) -> None:
         if not await self._db.exists(collection_id, user_id, can_see_all):
             raise NotFoundError("Collection not found")
+        # The receipt must also belong to the caller (or be visible to a
+        # can_see_all admin); otherwise a user could attach a foreign receipt to
+        # their own collection and read it back via get_detail.
+        receipt = await self._receipt_service.get_receipt_by_id(
+            receipt_id, user_id=user_id, can_see_all=can_see_all
+        )
+        if receipt is None:
+            raise NotFoundError("Receipt not found")
         await self._db.assign(collection_id, receipt_id)
 
     async def unassign(
