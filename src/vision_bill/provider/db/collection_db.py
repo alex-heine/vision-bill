@@ -1,6 +1,5 @@
 """Owns the asyncpg pool and all SQL for collections."""
 
-import logging
 from collections.abc import Mapping
 from datetime import date as Date
 from decimal import Decimal
@@ -11,8 +10,6 @@ import asyncpg
 
 from ...model.collection import Collection, CollectionDetail, CollectionSummary, CurrencyTotal
 from ...model.db.receipt import ReceiptRow
-
-logger = logging.getLogger(__name__)
 
 CREATE_COLLECTION_SQL = (
     "INSERT INTO collections (user_id, name, color, start_date, end_date, active) "
@@ -35,10 +32,7 @@ UPDATE_COLLECTION_SQL = (
 )
 DELETE_COLLECTION_SQL = "DELETE FROM collections WHERE id = $1 RETURNING id"
 EXISTS_COLLECTION_SQL = "SELECT 1 AS x FROM collections WHERE id = $1"
-
-COUNT_COLLECTION_SQL = (
-    "SELECT COUNT(*)::int AS cnt FROM receipt_collections WHERE collection_id = $1"
-)
+COLLECTION_OWNER_CHECK_SQL = "SELECT 1 AS x FROM collections WHERE id = $1 AND user_id = $2"
 TOTALS_PER_CURRENCY_SQL = (
     "SELECT r.currency AS currency, SUM(r.total) AS total "
     "FROM receipt_collections rc JOIN receipts r ON r.id = rc.receipt_id "
@@ -161,6 +155,13 @@ class CollectionDB:
         start_date: Date | None,
         end_date: Date | None,
     ) -> Collection | None:
+        """Update all four fields in one statement.
+
+        ``None`` means "set the column to NULL" — it is NOT "leave unchanged".
+        The caller (the service) must pass the collection's current values for
+        any field it does not want to change, otherwise a blank write will fail
+        the NOT NULL constraint on ``name``.
+        """
         args: list[Any] = [collection_id, collection_id, name, color, start_date, end_date]
         sql = UPDATE_COLLECTION_SQL
         if not can_see_all and user_id is not None:
@@ -203,12 +204,16 @@ class CollectionDB:
         if not can_see_all and user_id is not None:
             args.append(user_id)
             set_sql += f" AND user_id = ${len(args)}"
-        # No explicit transaction (matches the rest of the DB layer, which issues
-        # single auto-committed statements): deactivating siblings and setting the
-        # target active are two cheap statements; the partial unique index
-        # ux_collections_one_active_per_user still guarantees at most one active.
+        # Verify the target belongs to the caller BEFORE deactivating siblings, so
+        # activating a non-owned collection is a clean no-op (returns None) instead
+        # of silently destroying the caller's currently-active collection. Two
+        # auto-committed statements (matching the DB layer's convention); the
+        # ux_collections_one_active_per_user index still caps active at one per user.
         async with self.pool.acquire() as conn:
             if not can_see_all and user_id is not None:
+                owned = await conn.fetchrow(COLLECTION_OWNER_CHECK_SQL, collection_id, user_id)
+                if owned is None:
+                    return None
                 await conn.execute(ACTIVATE_DEACTIVATE_SIBLINGS_SQL, user_id)
             row = await conn.fetchrow(set_sql, *args)
         return self._collection_from_row(row) if row is not None else None

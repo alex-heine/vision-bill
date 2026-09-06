@@ -206,6 +206,9 @@ async def test_activate_returns_none_for_foreign_owner(db: CollectionDB) -> None
     conn.fetchrow = AsyncMock(return_value=None)
     db._pool = _make_pool(conn)
     assert await db.activate(CID, UID, can_see_all=False) is None
+    # A non-owned target must be a no-op: the sibling deactivation must NOT run,
+    # otherwise the caller's own active collection would be silently destroyed.
+    conn.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
