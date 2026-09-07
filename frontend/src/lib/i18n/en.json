@@ -225,6 +225,8 @@
 		"searchPlaceholder": "Search collections…",
 		"create": "Create “{name}”",
 		"remove": "Remove “{name}”",
+		"removeReceipt": "Remove “{name}” from this collection",
+		"removedFromCollection": "Removed from this collection",
 		"noMatch": "No collections match “{query}”.",
 		"save": "Save",
 		"cancel": "Cancel",

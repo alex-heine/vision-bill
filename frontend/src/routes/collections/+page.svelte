@@ -168,9 +168,9 @@
 							</p>
 							{#if c.totals.length}
 								<p class="mt-1 text-xs font-medium text-on-surface">
-									{#each c.totals as total (total.currency)}
+									{#each c.totals as total, i (total.currency)}
 										{formatMoney(total.total, total.currency)}
-										{#if total.currency !== c.totals[c.totals.length - 1].currency}
+										{#if i < c.totals.length - 1}
 											·
 										{/if}
 									{/each}

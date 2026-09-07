@@ -225,6 +225,8 @@
 		"searchPlaceholder": "Sammlungen suchen…",
 		"create": "„{name}“ anlegen",
 		"remove": "„{name}“ entfernen",
+		"removeReceipt": "„{name}“ aus dieser Sammlung entfernen",
+		"removedFromCollection": "Aus dieser Sammlung entfernt",
 		"noMatch": "Keine Sammlungen für „{query}“.",
 		"save": "Speichern",
 		"cancel": "Abbrechen",
