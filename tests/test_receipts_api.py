@@ -1033,3 +1033,65 @@ def test_update_receipt_sets_collections(api_context: ApiContext) -> None:
     args = coll_svc.set_receipt_collections.call_args.args
     assert args[0] == RECEIPT_ID
     assert list(args[1]) == [UUID("00000000-0000-4000-8000-0000000000c1")]
+
+
+def test_update_receipt_empty_collection_ids_clears_all(api_context: ApiContext) -> None:
+    """PUT /receipts/{id} with an explicit empty collection_ids list clears all links."""
+    coll_svc = MagicMock()
+    coll_svc.db_ready = True
+    coll_svc.set_receipt_collections = AsyncMock()
+    main_module.app.state.collection_service = coll_svc
+
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(return_value=_receipt_row(id=RECEIPT_ID))
+
+    body = {
+        "confidence": 90,
+        "merchant_name": "M",
+        "date": "2026-06-05",
+        "time": None,
+        "currency": "EUR",
+        "category": "other",
+        "line_items": [],
+        "subtotal": "10",
+        "discount_total": "0",
+        "tax_total": "0",
+        "total": "10",
+        "payment_method": "unknown",
+        "collection_ids": [],
+    }
+    r = ctx.client.put(f"{RECEIPTS_URL}/{RECEIPT_ID}", json=body)
+    assert r.status_code == 200
+    coll_svc.set_receipt_collections.assert_awaited_once()
+    args = coll_svc.set_receipt_collections.call_args.args
+    assert args[0] == RECEIPT_ID
+    assert list(args[1]) == []
+
+
+def test_update_receipt_omitted_collection_ids_noop(api_context: ApiContext) -> None:
+    """PUT /receipts/{id} without collection_ids leaves the membership untouched."""
+    coll_svc = MagicMock()
+    coll_svc.db_ready = True
+    coll_svc.set_receipt_collections = AsyncMock()
+    main_module.app.state.collection_service = coll_svc
+
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(return_value=_receipt_row(id=RECEIPT_ID))
+
+    body = {
+        "confidence": 90,
+        "merchant_name": "M",
+        "date": "2026-06-05",
+        "time": None,
+        "currency": "EUR",
+        "category": "other",
+        "line_items": [],
+        "subtotal": "10",
+        "discount_total": "0",
+        "tax_total": "0",
+        "total": "10",
+        "payment_method": "unknown",
+    }
+    r = ctx.client.put(f"{RECEIPTS_URL}/{RECEIPT_ID}", json=body)
+    assert r.status_code == 200
+    coll_svc.set_receipt_collections.assert_not_awaited()

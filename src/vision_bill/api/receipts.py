@@ -4,7 +4,6 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import Field
 
 from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
@@ -21,9 +20,13 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 class ReceiptUpdate(Receipt):
-    """PUT body: the receipt fields plus the collection membership to set."""
+    """PUT body: the receipt fields plus the collection membership to set.
 
-    collection_ids: list[UUID] = Field(default_factory=list)
+    ``collection_ids`` distinguishes "omitted" (None -> leave memberships
+    untouched) from an explicit empty list (clear all memberships).
+    """
+
+    collection_ids: list[UUID] | None = None
 
 
 @router.get("")
@@ -102,7 +105,7 @@ async def update_receipt(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
-    if receipt.collection_ids:
+    if receipt.collection_ids is not None:
         try:
             await collection_service.set_receipt_collections(
                 receipt_id, receipt.collection_ids, current_user.id, current_user.can_see_all
