@@ -32,6 +32,36 @@
 	let rows = $derived(filterCollections(options, query, selectedIds));
 	let listId = $state('cp-list-' + Math.random().toString(36).slice(2));
 
+	// In single mode the "All collections" row occupies index 0 and the
+	// filtered options are offset by 1; multi mode has no such row.
+	function optionId(id: string): string {
+		return listId + '-opt-' + id;
+	}
+
+	let activeOptionId = $derived.by(() => {
+		if (!open) return undefined;
+		if (mode === 'single') {
+			if (active === 0) return listId + '-all';
+			const row = rows[active - 1];
+			return row ? optionId(row.id) : undefined;
+		}
+		const row = rows[active];
+		return row ? optionId(row.id) : undefined;
+	});
+
+	// Option-row index currently highlighted (single mode is offset by 1
+	// because the "All collections" row takes index 0).
+	let activeRow = $derived(mode === 'single' ? active - 1 : active);
+
+	// Total navigable rows: single mode includes the "All" row at index 0.
+	let totalRows = $derived(mode === 'single' ? rows.length + 1 : rows.length);
+
+	// Clamp the highlight index when the filtered list shrinks (e.g. a multi
+	// toggle removes the highlighted row).
+	$effect(() => {
+		if (active >= totalRows) active = Math.max(0, totalRows - 1);
+	});
+
 	function labelFor(id: string): string {
 		return options.find((o) => o.id === id)?.name ?? '';
 	}
@@ -74,15 +104,15 @@
 
 	function onKeydown(e: KeyboardEvent): void {
 		if (e.key === 'ArrowDown') {
-			active = (active + 1) % Math.max(rows.length, 1);
+			active = (active + 1) % Math.max(totalRows, 1);
 			e.preventDefault();
 		} else if (e.key === 'ArrowUp') {
-			active = (active - 1 + rows.length) % Math.max(rows.length, 1);
+			active = (active - 1 + Math.max(totalRows, 1)) % Math.max(totalRows, 1);
 			e.preventDefault();
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
 			if (mode === 'single') {
-				pickSingle(rows[active]?.id ?? '');
+				pickSingle(active === 0 ? '' : (rows[active - 1]?.id ?? ''));
 			} else if (rows[active]) {
 				toggleMulti(rows[active].id);
 			} else {
@@ -136,7 +166,8 @@
 			id={listId + '-input'}
 			role="combobox"
 			aria-expanded={open}
-			aria-controls={listId}
+			aria-controls={open ? listId : undefined}
+			aria-activedescendant={activeOptionId}
 			aria-autocomplete="list"
 			aria-label={placeholder || $t('collections.searchPlaceholder')}
 			placeholder={mode === 'single' ? labelFor(singleId) || placeholder : placeholder}
@@ -159,12 +190,13 @@
 			{#if mode === 'single'}
 				<li
 					role="option"
+					id={listId + '-all'}
 					tabindex="-1"
 					aria-selected={singleId === ''}
 					class="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 text-sm {singleId ===
 					''
 						? 'font-medium'
-						: ''}"
+						: ''} {active === 0 ? 'bg-surface-container' : ''}"
 					onclick={() => pickSingle('')}
 					onkeydown={(e) => optionKeydown('', e)}
 				>
@@ -174,10 +206,11 @@
 			{#each rows as c, i (c.id)}
 				<li
 					role="option"
+					id={optionId(c.id)}
 					tabindex="-1"
 					aria-selected={mode === 'single' ? singleId === c.id : selectedIds.includes(c.id)}
 					class="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 text-sm {i ===
-					active
+					activeRow
 						? 'bg-surface-container'
 						: ''}"
 					onclick={() => (mode === 'single' ? pickSingle(c.id) : toggleMulti(c.id))}
@@ -190,6 +223,7 @@
 			{#if allowCreate && query.trim() && rows.length === 0}
 				<li
 					role="option"
+					id={listId + '-create'}
 					tabindex="-1"
 					aria-selected="false"
 					class="flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-primary"

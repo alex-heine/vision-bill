@@ -5,11 +5,6 @@ export function normalizeQuery(value: string): string {
 	return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-export interface PickerRow {
-	collection: CollectionSummary;
-	selected: boolean;
-}
-
 /**
  * Filter by (case-insensitive, whitespace-collapsed) substring; selected
  * options always remain visible. Selected rows sort first, then by name.
