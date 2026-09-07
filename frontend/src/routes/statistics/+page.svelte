@@ -4,12 +4,20 @@
 	import { api } from '$lib/api/client';
 	import { queryKeys } from '$lib/query/keys';
 	import { queryClient } from '$lib/query/client';
+	import CollectionPicker from '$lib/ui/CollectionPicker.svelte';
 	import StatisticsCharts from '$lib/ui/StatisticsCharts.svelte';
+
+	let collectionId = $state('');
+
+	const collections = createQuery(
+		() => ({ queryKey: queryKeys.collections(), queryFn: () => api.listCollections() }),
+		() => queryClient
+	);
 
 	const statistics = createQuery(
 		() => ({
-			queryKey: queryKeys.statistics(12),
-			queryFn: () => api.getStatistics(12)
+			queryKey: queryKeys.statistics(12, collectionId),
+			queryFn: () => api.getStatistics(12, collectionId || undefined)
 		}),
 		() => queryClient
 	);
@@ -24,6 +32,17 @@
 <section class="mx-auto max-w-5xl">
 	<h1 class="text-2xl font-semibold">{$t('pages.statistics.title')}</h1>
 	<p class="mt-1 text-sm text-on-surface-variant">{$t('dashboard.verifiedOnly')}</p>
+
+	<div class="mt-4 max-w-xs">
+		<span class="block text-sm text-on-surface-variant">{$t('statistics.collectionFilter')}</span>
+		<CollectionPicker
+			options={collections.data ?? []}
+			mode="single"
+			value={collectionId}
+			placeholder={$t('statistics.collectionAll')}
+			onchange={(v) => (collectionId = v as string)}
+		/>
+	</div>
 
 	{#if statistics.isLoading}
 		<p class="mt-6 text-sm text-on-surface-variant">{$t('common.loading')}</p>
