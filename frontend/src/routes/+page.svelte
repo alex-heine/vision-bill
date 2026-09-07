@@ -118,6 +118,8 @@
 	<div class="mt-6 rounded-xl border border-outline-variant bg-surface-container-low p-5">
 		{#if active.isLoading}
 			<p class="text-sm text-on-surface-variant">{$t('common.loading')}</p>
+		{:else if active.error}
+			<p class="text-sm text-on-surface-variant">{$t('common.error')}</p>
 		{:else if activeCollection}
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div class="flex min-w-0 items-center gap-2">
