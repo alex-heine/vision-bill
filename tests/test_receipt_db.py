@@ -644,15 +644,19 @@ async def test_get_statistics_scopes_to_collection(db: ReceiptDB) -> None:
     # collection id still bound ahead of the weeks offset (no off-by-one).
     weekly_sql = conn.fetch.call_args_list[5].args[0]
     assert "EXISTS" in weekly_sql
-    assert coll_id in conn.fetch.call_args_list[5].args[1:]
+    weekly_args = conn.fetch.call_args_list[5].args[1:]
+    assert coll_id in weekly_args
+    # The weeks offset is the LAST bound param — pins the ordering.
+    assert weekly_args[-1] == 11  # weeks=12 -> max(weeks - 1, 0)
 
 
 @pytest.mark.asyncio
 async def test_get_statistics_without_collection_has_no_scope(db: ReceiptDB) -> None:
-    """No collection_id -> no EXISTS scope (legacy byte-identical behaviour)."""
+    """No collection_id -> no EXISTS scope is added to any of the six queries."""
     conn = AsyncMock()
     conn.fetch = AsyncMock(return_value=[])
     db._pool = _make_pool(conn)
     await db.get_statistics(user_id=UUID("00000000-0000-4000-8000-00000000000a"), weeks=12)
+    assert len(conn.fetch.call_args_list) == 6  # guard against a vacuous loop below
     for call in conn.fetch.call_args_list:
         assert "EXISTS" not in call.args[0]
