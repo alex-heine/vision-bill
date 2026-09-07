@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
 	import { resolve } from '$app/paths';
-	import { t } from '$lib/i18n';
+	import { t, translate } from '$lib/i18n';
 	import { api } from '$lib/api/client';
 	import { weeklySeries, type WeeklyPoint } from '$lib/receipt-stats';
 	import { queryKeys } from '$lib/query/keys';
 	import { queryClient } from '$lib/query/client';
+	import { colorToStyle } from '$lib/collection-colors';
 	import { formatMoney } from '$lib/ui/money';
+	import { snackbar } from '$lib/ui/snackbar.svelte';
+	import CollectionPicker from '$lib/ui/CollectionPicker.svelte';
 
 	const statistics = createQuery(
 		() => ({
@@ -43,6 +46,54 @@
 	function weekLabel(value: string): string {
 		return value.slice(5);
 	}
+
+	const active = createQuery(
+		() => ({
+			queryKey: queryKeys.collectionsActive(),
+			queryFn: () => api.getActiveCollection()
+		}),
+		() => queryClient
+	);
+	let activeCollection = $derived(active.data ?? null);
+
+	const collections = createQuery(
+		() => ({ queryKey: queryKeys.collections(), queryFn: () => api.listCollections() }),
+		() => queryClient
+	);
+
+	let stopping = $state(false);
+	let activating = $state(false);
+
+	async function invalidateCapture(): Promise<void> {
+		await queryClient.invalidateQueries({ queryKey: queryKeys.collectionsActive() });
+		await queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
+	}
+
+	async function stopCapturing(): Promise<void> {
+		if (stopping || !activeCollection) return;
+		stopping = true;
+		try {
+			await api.deactivateCollection(activeCollection.id);
+			await invalidateCapture();
+		} catch {
+			snackbar.notify('error', translate('collections.deactivateFailed'));
+		} finally {
+			stopping = false;
+		}
+	}
+
+	async function activate(collectionId: string): Promise<void> {
+		if (activating || !collectionId) return;
+		activating = true;
+		try {
+			await api.activateCollection(collectionId);
+			await invalidateCapture();
+		} catch {
+			snackbar.notify('error', translate('collections.activateFailed'));
+		} finally {
+			activating = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -61,6 +112,45 @@
 		>
 			{$t('dashboard.openStatistics')}
 		</a>
+	</div>
+
+	<!-- Active collection capture -->
+	<div class="mt-6 rounded-xl border border-outline-variant bg-surface-container-low p-5">
+		{#if active.isLoading}
+			<p class="text-sm text-on-surface-variant">{$t('common.loading')}</p>
+		{:else if activeCollection}
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div class="flex min-w-0 items-center gap-2">
+					<span class="size-3 shrink-0 rounded-full" style={colorToStyle(activeCollection.color)}
+					></span>
+					<p class="truncate text-sm">
+						{$t('collections.capturing')}:
+						<strong>{activeCollection.name}</strong>
+					</p>
+				</div>
+				<button
+					type="button"
+					class="shrink-0 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium hover:bg-surface-container-high disabled:opacity-60"
+					disabled={stopping}
+					onclick={stopCapturing}
+				>
+					{$t('collections.stopCapturing')}
+				</button>
+			</div>
+		{:else}
+			<div>
+				<p class="text-sm font-medium">{$t('collections.startCapturing')}</p>
+				<div class="mt-2 max-w-xs">
+					<CollectionPicker
+						options={collections.data ?? []}
+						mode="single"
+						value=""
+						placeholder={$t('collections.noneActive')}
+						onchange={(v) => activate(v as string)}
+					/>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	{#if statistics.isLoading}

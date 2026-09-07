@@ -11,6 +11,7 @@
 	import { LOCALES, locale, setLocale, t } from '$lib/i18n';
 	import { queryClient } from '$lib/query/client';
 	import { queryKeys } from '$lib/query/keys';
+	import { colorToStyle } from '$lib/collection-colors';
 	import Snackbar from '$lib/ui/Snackbar.svelte';
 	import Icon, { type IconName } from '$lib/ui/Icon.svelte';
 
@@ -99,6 +100,19 @@
 
 	let queueCount = $derived(queue.data?.length ?? 0);
 
+	// The caller's active (auto-capturing) collection, if any — drives the
+	// header status dot and is one of the three surfaces kept in sync by
+	// invalidating collections()/collectionsActive() on activate/deactivate.
+	const active = createQuery(
+		() => ({
+			queryKey: queryKeys.collectionsActive(),
+			queryFn: () => api.getActiveCollection(),
+			enabled: currentUser !== null
+		}),
+		() => queryClient
+	);
+	let activeCollection = $derived(active.data ?? null);
+
 	type NavPath =
 		| '/'
 		| '/search'
@@ -109,7 +123,7 @@
 		| '/receipts'
 		| '/benchmarks/results'
 		| '/settings';
-	type MobileNavPath = '/search' | '/upload' | '/receipts';
+	type MobileNavPath = '/' | '/search' | '/upload' | '/receipts';
 
 	let navItems = $derived([
 		{ path: '/search', label: $t('nav.search'), icon: 'search' as const },
@@ -132,6 +146,7 @@
 	] satisfies { path: NavPath; label: string; icon: IconName }[]);
 
 	let mobileNavItems = $derived([
+		{ path: '/', label: $t('nav.home'), icon: 'dashboard' as const },
 		{ path: '/search', label: $t('nav.search'), icon: 'search' as const },
 		{ path: '/upload', label: $t('nav.upload'), icon: 'upload' as const },
 		{ path: '/receipts', label: $t('nav.receipts'), icon: 'receipts' as const }
@@ -161,6 +176,15 @@
 				<span>{$t('app.name')}</span>
 			</a>
 			<div class="flex items-center gap-2">
+				{#if activeCollection}
+					<a
+						href={resolve('/')}
+						title={$t('collections.capturing')}
+						aria-label={$t('collections.capturing')}
+						class="h-2.5 w-2.5 shrink-0 rounded-full"
+						style={colorToStyle(activeCollection.color)}
+					></a>
+				{/if}
 				{#if queueCount > 0}
 					<a
 						href={resolve('/queue')}

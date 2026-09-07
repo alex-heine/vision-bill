@@ -254,6 +254,10 @@ export const api = {
 	getCollection(id: string): Promise<CollectionDetail> {
 		return request<CollectionDetail>(`/collections/${id}`);
 	},
+	/** The caller's active (auto-capturing) collection, or null when none (204). */
+	async getActiveCollection(): Promise<Collection | null> {
+		return (await request<Collection>('/collections/active')) ?? null;
+	},
 	createCollection(body: CollectionCreate): Promise<Collection> {
 		return request<Collection>('/collections', {
 			method: 'POST',

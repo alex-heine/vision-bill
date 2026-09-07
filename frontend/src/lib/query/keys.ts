@@ -9,6 +9,7 @@ export const queryKeys = {
 	tags: () => ['tags'] as const,
 	collections: () => ['collections'] as const,
 	collection: (id: string) => ['collections', id] as const,
+	collectionsActive: () => ['collections', 'active'] as const,
 	uiConfig: () => ['system', 'ui-config'] as const,
 	statistics: (weeks = 12, collectionId = '') => ['statistics', weeks, collectionId] as const,
 	settings: () => ['system', 'settings'] as const
