@@ -228,6 +228,8 @@
 		"removeReceipt": "Remove “{name}” from this collection",
 		"removedFromCollection": "Removed from this collection",
 		"noMatch": "No collections match “{query}”.",
+		"notFoundTitle": "Collection not found",
+		"notFoundBody": "It may have been deleted.",
 		"save": "Save",
 		"cancel": "Cancel",
 		"createFailed": "Could not create the collection.",

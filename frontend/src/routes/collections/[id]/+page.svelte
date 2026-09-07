@@ -57,7 +57,6 @@
 	let stats = $derived(statistics.data ?? null);
 
 	async function refresh(): Promise<void> {
-		await queryClient.invalidateQueries({ queryKey: queryKeys.collection(id) });
 		await queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
 		await queryClient.invalidateQueries({ queryKey: queryKeys.statistics(12, id) });
 	}
@@ -119,6 +118,7 @@
 		deleting = true;
 		try {
 			await api.deleteCollection(id);
+			await queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
 			await goto(resolve('/collections'));
 		} catch {
 			snackbar.notify('error', translate('collections.deleteFailed'));
@@ -158,7 +158,8 @@
 	<p class="text-sm text-on-surface-variant">{$t('common.loading')}</p>
 {:else if notFound}
 	<div class="rounded-xl border border-outline-variant bg-surface-container-low p-4 text-sm">
-		<p class="font-medium">{$t('common.error')}</p>
+		<p class="font-medium">{$t('collections.notFoundTitle')}</p>
+		<p class="mt-1 text-on-surface-variant">{$t('collections.notFoundBody')}</p>
 		<a
 			href={resolve('/collections')}
 			class="mt-3 inline-block rounded-lg bg-primary px-4 py-2 text-on-primary hover:opacity-90"

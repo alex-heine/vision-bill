@@ -228,6 +228,8 @@
 		"removeReceipt": "„{name}“ aus dieser Sammlung entfernen",
 		"removedFromCollection": "Aus dieser Sammlung entfernt",
 		"noMatch": "Keine Sammlungen für „{query}“.",
+		"notFoundTitle": "Sammlung nicht gefunden",
+		"notFoundBody": "Sie wurde möglicherweise gelöscht.",
 		"save": "Speichern",
 		"cancel": "Abbrechen",
 		"createFailed": "Sammlung konnte nicht erstellt werden.",
