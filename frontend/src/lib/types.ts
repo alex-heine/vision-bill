@@ -80,6 +80,8 @@ export interface ReceiptWithDetails {
 	line_items: LineItemRow[];
 	taxes: TaxLineRow[];
 	image_path: string | null;
+	/** Ids of the collections this receipt belongs to (detail view only). */
+	collection_ids: string[];
 }
 
 /** Body for POST /images (file uploaded via FormData, model_id as query param). */
@@ -211,6 +213,8 @@ export interface ReceiptWrite {
 	tip?: string | null;
 	total: string;
 	payment_method?: PaymentMethod;
+	/** Collection membership to set on PUT (applied only when a non-empty list is sent). */
+	collection_ids?: string[];
 }
 
 /** One result of POST /images/analyze (backend PendingImageResult). */
@@ -234,6 +238,8 @@ export interface ReceiptListFilters {
 	/** ISO date, YYYY-MM-DD (inclusive) */
 	date_to?: string;
 	search?: string;
+	/** Only receipts in this collection. */
+	collection_id?: string;
 }
 
 export interface ImageListFilters {
@@ -264,4 +270,49 @@ export interface ProductSearchResponse {
 	cheapest_price: string | null;
 	average_price: string | null;
 	currency: string | null;
+}
+
+/** A per-currency total (mirrors backend `CurrencyTotal`). */
+export interface CurrencyTotal {
+	currency: string;
+	total: string;
+}
+
+/** A named, per-user group that whole receipts can belong to. */
+export interface Collection {
+	id: string;
+	name: string;
+	color: string | null;
+	start_date: string | null;
+	end_date: string | null;
+	active: boolean;
+	created_at: string | null;
+}
+
+/** A collection with its receipt count and per-currency totals (list view). */
+export interface CollectionSummary extends Collection {
+	receipt_count: number;
+	totals: CurrencyTotal[];
+}
+
+/** A collection with its totals and full receipt rows (detail view). */
+export interface CollectionDetail extends Collection {
+	totals: CurrencyTotal[];
+	receipts: ReceiptRow[];
+	receipt_count?: number;
+}
+
+export interface CollectionCreate {
+	name: string;
+	color?: string | null;
+	start_date?: string | null;
+	end_date?: string | null;
+	active?: boolean;
+}
+
+export interface CollectionUpdate {
+	name?: string;
+	color?: string | null;
+	start_date?: string | null;
+	end_date?: string | null;
 }

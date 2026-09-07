@@ -1,5 +1,9 @@
 import type {
 	AnalyzeResponse,
+	CollectionCreate,
+	CollectionDetail,
+	CollectionSummary,
+	CollectionUpdate,
 	ImageCreated,
 	ImageListFilters,
 	ImageRow,
@@ -109,8 +113,10 @@ export const api = {
 		return request<UiConfig>('/system/ui-config');
 	},
 
-	getStatistics(weeks = 12): Promise<ReceiptStatistics> {
-		return request<ReceiptStatistics>(`/statistics${toQueryString({ weeks })}`);
+	getStatistics(weeks = 12, collectionId?: string): Promise<ReceiptStatistics> {
+		return request<ReceiptStatistics>(
+			`/statistics${toQueryString({ weeks, collection_id: collectionId })}`
+		);
 	},
 
 	searchProducts(query: string): Promise<ProductSearchResponse> {
@@ -195,7 +201,8 @@ export const api = {
 				status: filters.status?.join(','),
 				date_from: filters.date_from,
 				date_to: filters.date_to,
-				search: filters.search
+				search: filters.search,
+				collection_id: filters.collection_id
 			})}`
 		);
 	},
@@ -237,6 +244,43 @@ export const api = {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ name })
+		});
+	},
+
+	listCollections(): Promise<CollectionSummary[]> {
+		return request<CollectionSummary[]>('/collections');
+	},
+	getCollection(id: string): Promise<CollectionDetail> {
+		return request<CollectionDetail>(`/collections/${id}`);
+	},
+	createCollection(body: CollectionCreate): Promise<CollectionSummary> {
+		return request<CollectionSummary>('/collections', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+	},
+	updateCollection(id: string, body: CollectionUpdate): Promise<CollectionSummary> {
+		return request<CollectionSummary>(`/collections/${id}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body)
+		});
+	},
+	deleteCollection(id: string): Promise<void> {
+		return request<void>(`/collections/${id}`, { method: 'DELETE' });
+	},
+	assignReceiptToCollection(
+		collectionId: string,
+		receiptId: string
+	): Promise<{ assigned: boolean }> {
+		return request<{ assigned: boolean }>(`/collections/${collectionId}/receipts/${receiptId}`, {
+			method: 'POST'
+		});
+	},
+	unassignReceiptFromCollection(collectionId: string, receiptId: string): Promise<void> {
+		return request<void>(`/collections/${collectionId}/receipts/${receiptId}`, {
+			method: 'DELETE'
 		});
 	}
 };

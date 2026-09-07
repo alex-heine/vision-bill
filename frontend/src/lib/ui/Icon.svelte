@@ -14,6 +14,7 @@
 		| 'check'
 		| 'refresh'
 		| 'plus'
+		| 'folder'
 		| 'alert';
 
 	let { icon }: { icon: IconName } = $props();
@@ -91,5 +92,7 @@
 		<path d="M12 3 2 21h20Z" />
 		<path d="M12 10v5" />
 		<path d="M12 18h.01" />
+	{:else if icon === 'folder'}
+		<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
 	{/if}
 </svg>

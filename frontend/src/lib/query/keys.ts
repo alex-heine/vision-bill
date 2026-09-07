@@ -7,7 +7,9 @@ export const queryKeys = {
 	receipt: (id: string) => ['receipts', id] as const,
 	search: (term: string) => ['search', term] as const,
 	tags: () => ['tags'] as const,
+	collections: () => ['collections'] as const,
+	collection: (id: string) => ['collections', id] as const,
 	uiConfig: () => ['system', 'ui-config'] as const,
-	statistics: (weeks = 12) => ['statistics', weeks] as const,
+	statistics: (weeks = 12, collectionId = '') => ['statistics', weeks, collectionId] as const,
 	settings: () => ['system', 'settings'] as const
 };
