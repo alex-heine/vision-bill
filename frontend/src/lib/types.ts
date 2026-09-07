@@ -213,7 +213,10 @@ export interface ReceiptWrite {
 	tip?: string | null;
 	total: string;
 	payment_method?: PaymentMethod;
-	/** Collection membership to set on PUT (applied only when a non-empty list is sent). */
+	/**
+	 * Collection membership on PUT. Omit to leave membership unchanged; send an
+	 * explicit empty list to clear all memberships.
+	 */
 	collection_ids?: string[];
 }
 

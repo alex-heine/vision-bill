@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { t } from '$lib/i18n';
+	import { t, translate } from '$lib/i18n';
 	import { api } from '$lib/api/client';
 	import { queryClient } from '$lib/query/client';
 	import { queryKeys } from '$lib/query/keys';
 	import { formatMoney, isPlainDecimal } from '$lib/ui/money';
+	import { snackbar } from '$lib/ui/snackbar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import TagEditor from '$lib/ui/TagEditor.svelte';
 	import CollectionPicker from '$lib/ui/CollectionPicker.svelte';
@@ -422,9 +423,13 @@
 					placeholder={$t('collections.searchPlaceholder')}
 					onchange={(v) => (form.collection_ids = v as string[])}
 					oncreate={async (name) => {
-						const created = await api.createCollection({ name });
-						form.collection_ids = [...form.collection_ids, created.id];
-						await queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
+						try {
+							const created = await api.createCollection({ name });
+							form.collection_ids = [...form.collection_ids, created.id];
+							await queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
+						} catch {
+							snackbar.notify('error', translate('collections.createFailed'));
+						}
 					}}
 				/>
 			</div>
