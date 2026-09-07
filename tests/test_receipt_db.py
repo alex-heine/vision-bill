@@ -640,3 +640,19 @@ async def test_get_statistics_scopes_to_collection(db: ReceiptDB) -> None:
     # collection id is a bound parameter, not interpolated
     args = conn.fetch.call_args_list[0].args[1:]
     assert coll_id in args
+    # The weekly query (separate arg list) must also be scoped, with the
+    # collection id still bound ahead of the weeks offset (no off-by-one).
+    weekly_sql = conn.fetch.call_args_list[5].args[0]
+    assert "EXISTS" in weekly_sql
+    assert coll_id in conn.fetch.call_args_list[5].args[1:]
+
+
+@pytest.mark.asyncio
+async def test_get_statistics_without_collection_has_no_scope(db: ReceiptDB) -> None:
+    """No collection_id -> no EXISTS scope (legacy byte-identical behaviour)."""
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[])
+    db._pool = _make_pool(conn)
+    await db.get_statistics(user_id=UUID("00000000-0000-4000-8000-00000000000a"), weeks=12)
+    for call in conn.fetch.call_args_list:
+        assert "EXISTS" not in call.args[0]
