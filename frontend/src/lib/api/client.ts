@@ -283,5 +283,11 @@ export const api = {
 		return request<void>(`/collections/${collectionId}/receipts/${receiptId}`, {
 			method: 'DELETE'
 		});
+	},
+	activateCollection(id: string): Promise<Collection> {
+		return request<Collection>(`/collections/${id}/activate`, { method: 'POST' });
+	},
+	deactivateCollection(id: string): Promise<Collection> {
+		return request<Collection>(`/collections/${id}/deactivate`, { method: 'POST' });
 	}
 };

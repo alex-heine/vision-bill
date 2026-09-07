@@ -69,3 +69,48 @@ describe('queryKeys.search', () => {
 		expect(queryKeys.search('a')).not.toEqual(queryKeys.search('b'));
 	});
 });
+
+const COLLECTION_BODY = {
+	id: '6f1e0c1a-0000-4000-8000-000000000001',
+	name: 'Berlin',
+	color: '#3B82F6',
+	start_date: null,
+	end_date: null,
+	active: true,
+	created_at: null
+};
+
+function mockCollectionFetch(): void {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			statusText: 'OK',
+			json: async () => COLLECTION_BODY
+		})
+	);
+}
+
+describe('api collection capture', () => {
+	it('activateCollection POSTs to /collections/{id}/activate', async () => {
+		mockCollectionFetch();
+
+		const result = await api.activateCollection('coll-1');
+
+		const [url, init] = vi.mocked(fetch).mock.calls[0];
+		expect(String(url)).toContain('/collections/coll-1/activate');
+		expect(init).toEqual({ credentials: 'same-origin', method: 'POST' });
+		expect(result).toEqual(COLLECTION_BODY);
+	});
+
+	it('deactivateCollection POSTs to /collections/{id}/deactivate', async () => {
+		mockCollectionFetch();
+
+		await api.deactivateCollection('coll-1');
+
+		const [url, init] = vi.mocked(fetch).mock.calls[0];
+		expect(String(url)).toContain('/collections/coll-1/deactivate');
+		expect(init).toEqual({ credentials: 'same-origin', method: 'POST' });
+	});
+});
