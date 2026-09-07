@@ -188,6 +188,9 @@ STATS_WEEKLY_SQL = """
 """
 LIST_LINE_ITEMS_SQL = "SELECT * FROM line_items WHERE receipt_id = $1 ORDER BY id"
 LIST_TAXES_SQL = "SELECT * FROM taxes WHERE receipt_id = $1 ORDER BY id"
+LIST_COLLECTION_IDS_FOR_RECEIPT_SQL = (
+    "SELECT collection_id FROM receipt_collections WHERE receipt_id = $1"
+)
 LIST_TAGS_SQL = "SELECT name FROM tags ORDER BY name"
 INSERT_TAG_SQL = "INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING name"
 VERIFY_RECEIPT_SQL = (
@@ -522,6 +525,7 @@ class ReceiptDB:
         date_from: Date | None = None,
         date_to: Date | None = None,
         search: str | None = None,
+        collection_id: UUID | None = None,
         user_id: UUID | None = None,
         can_see_all: bool = False,
     ) -> list[ReceiptRow]:
@@ -550,6 +554,12 @@ class ReceiptDB:
             pattern = f"%{search}%"
             args.append(pattern)
             where.append(f"(merchant_name ILIKE ${len(args)} OR receipt_number ILIKE ${len(args)})")
+        if collection_id is not None:
+            args.append(collection_id)
+            where.append(
+                "EXISTS (SELECT 1 FROM receipt_collections rc "
+                f"WHERE rc.receipt_id = receipts.id AND rc.collection_id = ${len(args)})"
+            )
 
         sql = LIST_RECEIPTS_BASE_SQL
         if where:
@@ -712,16 +722,19 @@ class ReceiptDB:
                 return None
             li_rows = await conn.fetch(LIST_LINE_ITEMS_SQL, receipt_id)
             tax_rows = await conn.fetch(LIST_TAXES_SQL, receipt_id)
+            coll_rows = await conn.fetch(LIST_COLLECTION_IDS_FOR_RECEIPT_SQL, receipt_id)
 
         d = dict(row)
         image_path: str | None = d.get("image_path")
         receipt = self._receipt_row_from_record(row)
+        collection_ids = [r["collection_id"] for r in coll_rows]
 
         return ReceiptWithDetails(
             receipt=receipt,
             line_items=[self._line_item_row_from_record(r) for r in li_rows],
             taxes=[self._tax_row_from_record(r) for r in tax_rows],
             image_path=image_path,
+            collection_ids=collection_ids,
         )
 
     async def list_tags(self) -> list[str]:

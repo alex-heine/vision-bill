@@ -660,3 +660,19 @@ async def test_get_statistics_without_collection_has_no_scope(db: ReceiptDB) -> 
     assert len(conn.fetch.call_args_list) == 6  # guard against a vacuous loop below
     for call in conn.fetch.call_args_list:
         assert "EXISTS" not in call.args[0]
+
+
+@pytest.mark.asyncio
+async def test_list_receipts_filters_by_collection(db: ReceiptDB) -> None:
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[])
+    db._pool = _make_pool(conn)
+    coll_id = UUID("00000000-0000-4000-8000-0000000000c1")
+    await db.list_receipts(
+        collection_id=coll_id, user_id=UUID("00000000-0000-4000-8000-00000000000a")
+    )
+    sql = conn.fetch.call_args.args[0]
+    assert "receipt_collections" in sql
+    assert "collection_id" in sql
+    # The collection id is a bound parameter, not interpolated.
+    assert coll_id in conn.fetch.call_args.args[1:]

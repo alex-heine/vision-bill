@@ -136,4 +136,17 @@ class CollectionService:
     async def set_receipt_collections(
         self, receipt_id: UUID, collection_ids: list[UUID], user_id: UUID | None, can_see_all: bool
     ) -> None:
+        # The receipt must belong to the caller (or be visible to a can_see_all
+        # admin); otherwise a user could rewrite another user's receipt links.
+        receipt = await self._receipt_service.get_receipt_by_id(
+            receipt_id, user_id=user_id, can_see_all=can_see_all
+        )
+        if receipt is None:
+            raise NotFoundError("Receipt not found")
+        # Each target collection must also belong to the caller; otherwise a user
+        # could attach their receipt to a foreign collection and leak their data
+        # into that collection's detail view (the reverse of the assign leak).
+        for collection_id in collection_ids:
+            if not await self._db.exists(collection_id, user_id, can_see_all):
+                raise NotFoundError("Collection not found")
         await self._db.set_receipt_collections(receipt_id, collection_ids)

@@ -4,18 +4,26 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import Field
 
 from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
 from ..security.dependencies import get_current_user
 from ..security.models import User
+from ..service.collection_service import CollectionService, NotFoundError
 from ..service.image_service import ImageService
 from ..service.receipt_service import ReceiptReferencedError, ReceiptService
-from .helper.helper import get_image_service, get_receipt_service
+from .helper.helper import get_collection_service, get_image_service, get_receipt_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+class ReceiptUpdate(Receipt):
+    """PUT body: the receipt fields plus the collection membership to set."""
+
+    collection_ids: list[UUID] = Field(default_factory=list)
 
 
 @router.get("")
@@ -34,14 +42,18 @@ async def list_receipts(
     search: str | None = Query(
         None, description="Case-insensitive match on merchant name or receipt number"
     ),
+    collection_id: UUID | None = Query(  # noqa: B008
+        None, description="Only receipts in this collection"
+    ),
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> list[ReceiptRow]:
     """List persisted receipts (the collection resource).
 
     Optional filters: ``status`` (comma-separated), an inclusive
-    ``date_from``/``date_to`` range, and ``search`` over merchant name or
-    receipt number. Non-see-all users only list their own receipts.
+    ``date_from``/``date_to`` range, ``search`` over merchant name or
+    receipt number, and ``collection_id`` to scope to one collection.
+    Non-see-all users only list their own receipts.
     """
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -53,6 +65,7 @@ async def list_receipts(
         date_from=date_from,
         date_to=date_to,
         search=search,
+        collection_id=collection_id,
         user_id=current_user.id,
         can_see_all=current_user.can_see_all,
     )
@@ -77,8 +90,9 @@ async def get_receipt(
 @router.put("/{receipt_id}")
 async def update_receipt(
     receipt_id: UUID,
-    receipt: Receipt,
+    receipt: ReceiptUpdate,
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    collection_service: CollectionService = Depends(get_collection_service),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ReceiptRow:
     if not receipt_service.db_ready:
@@ -88,6 +102,13 @@ async def update_receipt(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
+    if receipt.collection_ids:
+        try:
+            await collection_service.set_receipt_collections(
+                receipt_id, receipt.collection_ids, current_user.id, current_user.can_see_all
+            )
+        except NotFoundError:
+            raise HTTPException(status_code=404, detail="Collection not found") from None
     return row
 
 

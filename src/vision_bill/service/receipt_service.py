@@ -154,6 +154,7 @@ class ReceiptService:
         date_from: date | None = None,
         date_to: date | None = None,
         search: str | None = None,
+        collection_id: UUID | None = None,
         user_id: UUID | None = None,
         can_see_all: bool = False,
     ) -> list[ReceiptRow]:
@@ -164,6 +165,7 @@ class ReceiptService:
             date_from=date_from,
             date_to=date_to,
             search=search,
+            collection_id=collection_id,
             user_id=user_id,
             can_see_all=can_see_all,
         )

@@ -465,6 +465,7 @@ async def test_list_receipts_delegates(delegation_context: DelegationContext) ->
         date_from=None,
         date_to=None,
         search=None,
+        collection_id=None,
         user_id=None,
         can_see_all=False,
     )

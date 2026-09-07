@@ -252,9 +252,7 @@ def test_upload_image_bypass_review_verifies_and_moves(
                 bypass_review=True,
                 status="processing",
             ),
-            _receipt_row(
-                id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
-            ),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True),
         ]
     )
     ctx.conn.execute = AsyncMock()
@@ -300,9 +298,7 @@ def test_upload_image_uses_configured_bypass_review_default(
                 bypass_review=True,
                 status="processing",
             ),
-            _receipt_row(
-                id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
-            ),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True),
         ]
     )
 
@@ -604,6 +600,7 @@ def test_analyze_images_success(api_context: ApiContext, tmp_path: Path) -> None
         return [_image_row(id=IMAGE_ID, status="pending", image_path=str(queued_file))]
 
     ctx.conn.fetch = AsyncMock(side_effect=fetch_side_effect)
+
     # list_pending_images uses fetch; claiming the image and persisting the
     # receipt use fetchrow with different row shapes.
     def fetchrow_side_effect(sql: str, *args: object) -> dict[str, object] | None:
@@ -699,9 +696,7 @@ def test_update_receipt_accepts_suggested_tags(api_context: ApiContext) -> None:
     model normalizes them, it does not reject them.
     """
     ctx = api_context
-    ctx.conn.fetchrow = AsyncMock(
-        return_value=_receipt_row(id=RECEIPT_ID, merchant_name="ACME")
-    )
+    ctx.conn.fetchrow = AsyncMock(return_value=_receipt_row(id=RECEIPT_ID, merchant_name="ACME"))
     ctx.conn.execute = AsyncMock()
 
     body = {
@@ -896,9 +891,7 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
                 receipt_id=RECEIPT_ID,
                 image_path=tmp_path,
             ),
-            _receipt_row(
-                id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True
-            ),
+            _receipt_row(id=RECEIPT_ID, image_id=IMAGE_ID, status="verified", verified=True),
         ]
     )
     ctx.conn.execute = AsyncMock()
@@ -1007,3 +1000,36 @@ def test_delete_receipt_referenced_conflict(api_context: ApiContext) -> None:
     assert response.status_code == 409
     assert "benchmark" in response.json()["detail"]
     ctx.conn.execute.assert_not_awaited()
+
+
+def test_update_receipt_sets_collections(api_context: ApiContext) -> None:
+    """PUT /receipts/{id} with collection_ids reconciles the join rows exactly once."""
+    coll_svc = MagicMock()
+    coll_svc.db_ready = True
+    coll_svc.set_receipt_collections = AsyncMock()
+    main_module.app.state.collection_service = coll_svc
+
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(return_value=_receipt_row(id=RECEIPT_ID))
+
+    body = {
+        "confidence": 90,
+        "merchant_name": "M",
+        "date": "2026-06-05",
+        "time": None,
+        "currency": "EUR",
+        "category": "other",
+        "line_items": [],
+        "subtotal": "10",
+        "discount_total": "0",
+        "tax_total": "0",
+        "total": "10",
+        "payment_method": "unknown",
+        "collection_ids": ["00000000-0000-4000-8000-0000000000c1"],
+    }
+    r = ctx.client.put(f"{RECEIPTS_URL}/{RECEIPT_ID}", json=body)
+    assert r.status_code == 200
+    coll_svc.set_receipt_collections.assert_awaited_once()
+    args = coll_svc.set_receipt_collections.call_args.args
+    assert args[0] == RECEIPT_ID
+    assert list(args[1]) == [UUID("00000000-0000-4000-8000-0000000000c1")]

@@ -63,3 +63,4 @@ class ReceiptWithDetails(BaseModel):
     line_items: list[LineItemRow]
     taxes: list[TaxLineRow]
     image_path: str | None = None
+    collection_ids: list[UUID] = Field(default_factory=list)

@@ -171,3 +171,35 @@ async def test_create_passes_active_flag() -> None:
     db.create = AsyncMock(return_value=object())
     await svc.create(CollectionCreate(name="Berlin", active=True), UID)
     assert db.create.call_args.kwargs["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_receipt_collections_rejects_foreign_receipt() -> None:
+    """A caller cannot (re)assign collections on a receipt they cannot see."""
+    svc, db = _service()
+    svc._receipt_service.get_receipt_by_id = AsyncMock(return_value=None)  # foreign receipt
+    with pytest.raises(NotFoundError):
+        await svc.set_receipt_collections(RID, [CID], UID, can_see_all=False)
+    db.set_receipt_collections.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_receipt_collections_rejects_foreign_collection() -> None:
+    """A caller cannot attach their receipt to a collection they do not own
+    (would leak their data into a foreign collection's detail view)."""
+    svc, db = _service()
+    svc._receipt_service.get_receipt_by_id = AsyncMock(return_value=object())  # caller's receipt
+    db.exists = AsyncMock(return_value=False)  # the target collection is someone else's
+    with pytest.raises(NotFoundError):
+        await svc.set_receipt_collections(RID, [CID], UID, can_see_all=False)
+    db.set_receipt_collections.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_receipt_collections_delegates_when_owned() -> None:
+    svc, db = _service()
+    svc._receipt_service.get_receipt_by_id = AsyncMock(return_value=object())
+    db.exists = AsyncMock(return_value=True)  # every target collection is the caller's
+    db.set_receipt_collections = AsyncMock()
+    await svc.set_receipt_collections(RID, [CID], UID, can_see_all=False)
+    db.set_receipt_collections.assert_awaited_once_with(RID, [CID])
