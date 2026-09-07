@@ -272,6 +272,7 @@
 		"time": "Uhrzeit",
 		"currency": "Währung",
 		"category": "Kategorie",
+		"collections": "Sammlungen",
 		"paymentMethod": "Zahlungsart",
 		"confidence": "Konfidenz (%)",
 		"amounts": "Beträge",

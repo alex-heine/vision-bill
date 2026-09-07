@@ -8,6 +8,7 @@
 	import { formatMoney, isPlainDecimal } from '$lib/ui/money';
 	import Icon from '$lib/ui/Icon.svelte';
 	import TagEditor from '$lib/ui/TagEditor.svelte';
+	import CollectionPicker from '$lib/ui/CollectionPicker.svelte';
 	import type {
 		Category,
 		LineItemRow,
@@ -73,12 +74,14 @@
 		total: string;
 		lines: EditorLine[];
 		taxLines: EditorTax[];
+		collection_ids: string[];
 	}
 
 	function buildForm(
 		receipt: ReceiptRow,
 		lineItems: LineItemRow[],
-		taxes: TaxLineRow[]
+		taxes: TaxLineRow[],
+		collectionIds: string[]
 	): EditorForm {
 		return {
 			confidence: String(receipt.confidence),
@@ -107,7 +110,8 @@
 				name: tax.name,
 				rate: tax.rate === null ? '' : String(tax.rate),
 				amount: String(tax.amount)
-			}))
+			})),
+			collection_ids: [...collectionIds]
 		};
 	}
 
@@ -115,6 +119,7 @@
 		receipt,
 		lineItems,
 		taxes,
+		collectionIds = [],
 		busy = false,
 		onSave,
 		onSaveAndVerify,
@@ -123,6 +128,8 @@
 		receipt: ReceiptRow;
 		lineItems: LineItemRow[];
 		taxes: TaxLineRow[];
+		/** Collections the receipt currently belongs to (detail view). */
+		collectionIds?: string[];
 		/** Disable the action buttons while a request is in flight. */
 		busy?: boolean;
 		/** Offered when the page wants a plain save (no verify). */
@@ -134,7 +141,7 @@
 	} = $props();
 
 	function initialForm(): EditorForm {
-		return buildForm(receipt, lineItems, taxes);
+		return buildForm(receipt, lineItems, taxes, collectionIds);
 	}
 
 	let form = $state<EditorForm>(initialForm());
@@ -147,6 +154,12 @@
 		() => queryClient
 	);
 	let tagOptions = $derived<string[]>(tagList.data ?? []);
+
+	// Collection vocabulary for the multi-select, fetched once per editor mount.
+	const collections = createQuery(
+		() => ({ queryKey: queryKeys.collections(), queryFn: () => api.listCollections() }),
+		() => queryClient
+	);
 
 	$effect(() => {
 		if (receipt.id !== initializedReceiptId) {
@@ -273,7 +286,8 @@
 			tax_total: form.tax_total.trim() || '0',
 			tip: form.tip.trim() === '' ? null : form.tip.trim(),
 			total: form.total.trim(),
-			payment_method: form.payment_method as PaymentMethod
+			payment_method: form.payment_method as PaymentMethod,
+			collection_ids: [...form.collection_ids]
 		};
 	}
 
@@ -397,6 +411,22 @@
 						<option value={method}>{$t(`payment.${method}`)}</option>
 					{/each}
 				</select>
+			</div>
+			<div class="sm:col-span-2">
+				<span class={labelClass}>{$t('editor.collections')}</span>
+				<CollectionPicker
+					options={collections.data ?? []}
+					mode="multi"
+					value={form.collection_ids}
+					allowCreate
+					placeholder={$t('collections.searchPlaceholder')}
+					onchange={(v) => (form.collection_ids = v as string[])}
+					oncreate={async (name) => {
+						const created = await api.createCollection({ name });
+						form.collection_ids = [...form.collection_ids, created.id];
+						await queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
+					}}
+				/>
 			</div>
 		</div>
 	</div>

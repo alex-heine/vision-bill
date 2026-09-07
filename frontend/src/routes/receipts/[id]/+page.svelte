@@ -163,6 +163,7 @@
 					receipt={data.receipt}
 					lineItems={data.line_items}
 					taxes={data.taxes}
+					collectionIds={data.collection_ids}
 					busy={saving || verifying}
 					onSave={saveOnly}
 					onSaveAndVerify={canVerify ? saveAndVerify : undefined}

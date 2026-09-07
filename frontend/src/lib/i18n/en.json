@@ -272,6 +272,7 @@
 		"time": "Time",
 		"currency": "Currency",
 		"category": "Category",
+		"collections": "Collections",
 		"paymentMethod": "Payment method",
 		"confidence": "Confidence (%)",
 		"amounts": "Amounts",
