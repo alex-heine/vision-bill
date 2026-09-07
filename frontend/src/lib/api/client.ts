@@ -1,5 +1,6 @@
 import type {
 	AnalyzeResponse,
+	Collection,
 	CollectionCreate,
 	CollectionDetail,
 	CollectionSummary,
@@ -253,15 +254,15 @@ export const api = {
 	getCollection(id: string): Promise<CollectionDetail> {
 		return request<CollectionDetail>(`/collections/${id}`);
 	},
-	createCollection(body: CollectionCreate): Promise<CollectionSummary> {
-		return request<CollectionSummary>('/collections', {
+	createCollection(body: CollectionCreate): Promise<Collection> {
+		return request<Collection>('/collections', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body)
 		});
 	},
-	updateCollection(id: string, body: CollectionUpdate): Promise<CollectionSummary> {
-		return request<CollectionSummary>(`/collections/${id}`, {
+	updateCollection(id: string, body: CollectionUpdate): Promise<Collection> {
+		return request<Collection>(`/collections/${id}`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body)
