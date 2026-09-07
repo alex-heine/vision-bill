@@ -42,6 +42,11 @@
 			placeholder={$t('statistics.collectionAll')}
 			onchange={(v) => (collectionId = v as string)}
 		/>
+		{#if collections.isSuccess && (collections.data ?? []).length === 0}
+			<span class="mt-1 block text-xs text-on-surface-variant"
+				>{$t('statistics.collectionEmpty')}</span
+			>
+		{/if}
 	</div>
 
 	{#if statistics.isLoading}

@@ -114,3 +114,47 @@ describe('api collection capture', () => {
 		expect(init).toEqual({ credentials: 'same-origin', method: 'POST' });
 	});
 });
+
+const STATS_BODY = {
+	verified_receipt_count: 0,
+	currencies: [],
+	merchants: [],
+	categories: [],
+	payment_methods: [],
+	weekdays: [],
+	weekly_spending: []
+};
+
+function mockStatsFetch(): void {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			statusText: 'OK',
+			json: async () => STATS_BODY
+		})
+	);
+}
+
+describe('api.getStatistics', () => {
+	it('GETs /statistics?weeks=12 with no collection filter', async () => {
+		mockStatsFetch();
+
+		await api.getStatistics(12);
+
+		const [url, init] = vi.mocked(fetch).mock.calls[0];
+		expect(String(url)).toContain('/statistics?weeks=12');
+		expect(String(url)).not.toContain('collection_id');
+		expect(init).toEqual({ credentials: 'same-origin' });
+	});
+
+	it('appends collection_id when a collection is selected', async () => {
+		mockStatsFetch();
+
+		await api.getStatistics(12, 'coll-1');
+
+		const [url] = vi.mocked(fetch).mock.calls[0];
+		expect(String(url)).toContain('/statistics?weeks=12&collection_id=coll-1');
+	});
+});
