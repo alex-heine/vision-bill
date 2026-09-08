@@ -84,6 +84,20 @@ class CollectionDB:
             return f" AND user_id = ${len(args)}"
         return ""
 
+    def _scoped_returning(
+        self, base_sql: str, args: list[Any], user_id: UUID | None, can_see_all: bool
+    ) -> str:
+        """Like ``_owner_scope`` but for statements ending in a RETURNING clause.
+
+        The owner fragment must go in the WHERE clause, i.e. BEFORE ``RETURNING`` —
+        appending it after would parse as part of the RETURNING expression
+        (``RETURNING id AND user_id = $N``) and fail with a datatype error.
+        """
+        if not can_see_all and user_id is not None:
+            args.append(user_id)
+            return base_sql.replace(" RETURNING ", f" AND user_id = ${len(args)} RETURNING ")
+        return base_sql
+
     async def create(
         self,
         user_id: UUID,
@@ -163,20 +177,14 @@ class CollectionDB:
         the NOT NULL constraint on ``name``.
         """
         args: list[Any] = [collection_id, collection_id, name, color, start_date, end_date]
-        sql = UPDATE_COLLECTION_SQL
-        if not can_see_all and user_id is not None:
-            args.append(user_id)
-            sql += f" AND user_id = ${len(args)}"
+        sql = self._scoped_returning(UPDATE_COLLECTION_SQL, args, user_id, can_see_all)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(sql, *args)
         return self._collection_from_row(row) if row is not None else None
 
     async def delete(self, collection_id: UUID, user_id: UUID | None, can_see_all: bool) -> bool:
         args: list[Any] = [collection_id]
-        sql = DELETE_COLLECTION_SQL
-        if not can_see_all and user_id is not None:
-            args.append(user_id)
-            sql += f" AND user_id = ${len(args)}"
+        sql = self._scoped_returning(DELETE_COLLECTION_SQL, args, user_id, can_see_all)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(sql, *args)
         return row is not None
@@ -200,10 +208,7 @@ class CollectionDB:
     ) -> Collection | None:
         """Mark active, deactivating the user's other active collection (one active per user)."""
         args: list[Any] = [collection_id]
-        set_sql = SET_ACTIVE_SQL
-        if not can_see_all and user_id is not None:
-            args.append(user_id)
-            set_sql += f" AND user_id = ${len(args)}"
+        set_sql = self._scoped_returning(SET_ACTIVE_SQL, args, user_id, can_see_all)
         # Verify the target belongs to the caller BEFORE deactivating siblings, so
         # activating a non-owned collection is a clean no-op (returns None) instead
         # of silently destroying the caller's currently-active collection. Two
@@ -222,10 +227,7 @@ class CollectionDB:
         self, collection_id: UUID, user_id: UUID | None, can_see_all: bool
     ) -> Collection | None:
         args: list[Any] = [collection_id]
-        set_sql = SET_INACTIVE_SQL
-        if not can_see_all and user_id is not None:
-            args.append(user_id)
-            set_sql += f" AND user_id = ${len(args)}"
+        set_sql = self._scoped_returning(SET_INACTIVE_SQL, args, user_id, can_see_all)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(set_sql, *args)
         return self._collection_from_row(row) if row is not None else None

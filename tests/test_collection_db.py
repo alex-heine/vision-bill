@@ -221,3 +221,55 @@ async def test_deactivate_sets_inactive(db: CollectionDB) -> None:
     assert conn.fetchrow.call_args.args[0].startswith(
         "UPDATE collections SET active = FALSE WHERE id"
     )
+
+
+@pytest.mark.asyncio
+async def test_delete_scopes_owner_before_returning(db: CollectionDB) -> None:
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={"id": CID})
+    db._pool = _make_pool(conn)
+    await db.delete(CID, UID, can_see_all=False)
+    sql = conn.fetchrow.call_args.args[0]
+    # Regression: the owner scope must sit in the WHERE clause, BEFORE the
+    # RETURNING clause. Appending it after produced `RETURNING id AND user_id = $2`,
+    # which Postgres rejects ("argument of AND must be type boolean, not type uuid").
+    assert "AND user_id = $2" in sql
+    assert sql.index("AND user_id = $2") < sql.index(" RETURNING ")
+    assert conn.fetchrow.call_args.args[1:] == (CID, UID)
+
+
+@pytest.mark.asyncio
+async def test_update_scopes_owner_before_returning(db: CollectionDB) -> None:
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value=_collection_row())
+    db._pool = _make_pool(conn)
+    await db.update(
+        CID, UID, can_see_all=False, name="X", color=None, start_date=None, end_date=None
+    )
+    sql = conn.fetchrow.call_args.args[0]
+    assert "AND user_id = $7" in sql
+    assert sql.index("AND user_id = $7") < sql.index(" RETURNING ")
+
+
+@pytest.mark.asyncio
+async def test_activate_scopes_owner_before_returning(db: CollectionDB) -> None:
+    conn = AsyncMock()
+    conn.execute = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value=_collection_row(active=True))
+    db._pool = _make_pool(conn)
+    await db.activate(CID, UID, can_see_all=False)
+    # set-active is the LAST fetchrow (the ownership check runs first)
+    set_sql = [c.args[0] for c in conn.fetchrow.call_args_list][-1]
+    assert "AND user_id = $2" in set_sql
+    assert set_sql.index("AND user_id = $2") < set_sql.index(" RETURNING ")
+
+
+@pytest.mark.asyncio
+async def test_deactivate_scopes_owner_before_returning(db: CollectionDB) -> None:
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value=_collection_row(active=False))
+    db._pool = _make_pool(conn)
+    await db.deactivate(CID, UID, can_see_all=False)
+    sql = conn.fetchrow.call_args.args[0]
+    assert "AND user_id = $2" in sql
+    assert sql.index("AND user_id = $2") < sql.index(" RETURNING ")
