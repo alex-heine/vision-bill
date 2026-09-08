@@ -76,10 +76,12 @@
 		editOpen = false;
 	}
 
-	function onHexInput(event: Event): void {
-		const value = (event.currentTarget as HTMLInputElement).value.trim();
-		if (value === '' || /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) color = value || null;
-	}
+	// True when the chosen color is not one of the presets (the native picker
+	// returns lowercase hex, so compare case-insensitively).
+	let isCustomColor = $derived.by(() => {
+		const current = color?.toLowerCase() ?? null;
+		return current !== null && !PRESET_COLORS.some((p) => p.toLowerCase() === current);
+	});
 
 	function onColorPicker(event: Event): void {
 		color = (event.currentTarget as HTMLInputElement).value || null;
@@ -350,26 +352,26 @@
 									onclick={() => (color = preset)}
 								></button>
 							{/each}
+							<!-- Custom color: a labeled pill (clearly not a preset dot) that
+						     opens the native color picker; selected when a non-preset color is set. -->
 							<label
-								class="flex size-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-outline-variant text-[10px]"
-								title={$t('collections.colorCustom')}
+								class="flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-outline-variant px-2.5 text-sm transition-colors hover:border-primary/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary {isCustomColor
+									? 'border-primary ring-2 ring-primary/30'
+									: ''}"
 							>
+								<span
+									class="size-5 shrink-0 rounded-full border border-outline-variant"
+									style={colorToStyle(color)}
+								></span>
+								{$t('collections.colorCustom')}
 								<input
 									type="color"
-									class="absolute inset-0 cursor-pointer opacity-0"
+									class="sr-only"
+									aria-label={$t('collections.colorCustom')}
 									value={color && color !== '' ? color : '#64748B'}
 									oninput={onColorPicker}
 								/>
-								<span style={colorToStyle(color || null)} class="size-full rounded-full"></span>
 							</label>
-							<input
-								type="text"
-								aria-label={$t('collections.colorCustom')}
-								placeholder="#RRGGBB"
-								class="w-24 rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-1 text-sm"
-								value={color ?? ''}
-								oninput={onHexInput}
-							/>
 						</div>
 					</div>
 

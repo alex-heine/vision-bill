@@ -126,6 +126,10 @@ def test_get_active_returns_204_when_none(client_and_service: tuple[TestClient, 
     svc.active_collection = AsyncMock(return_value=None)
     r = client.get(f"{COLLECTIONS_URL}/active")
     assert r.status_code == 204
+    # A 204 must carry no body at all. Regression: JSONResponse(204, None)
+    # renders "null" (4 bytes); uvicorn/h11 then aborts the connection with
+    # LocalProtocolError("Too much data for declared Content-Length").
+    assert r.content == b""
 
 
 def test_activate_delegates(client_and_service: tuple[TestClient, MagicMock]) -> None:

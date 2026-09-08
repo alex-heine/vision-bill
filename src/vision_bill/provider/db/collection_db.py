@@ -26,9 +26,12 @@ LIST_COLLECTIONS_BASE_SQL = (
     "SELECT c.*, (SELECT COUNT(*)::int FROM receipt_collections rc "
     "WHERE rc.collection_id = c.id) AS cnt FROM collections c"
 )
+# Placeholder numbering must be contiguous from $1: an argument that is passed
+# but never referenced (the old `WHERE id = $2` + duplicated id) makes Postgres
+# reject the prepared statement with IndeterminateDatatypeError.
 UPDATE_COLLECTION_SQL = (
-    "UPDATE collections SET name = $3, color = $4, start_date = $5, end_date = $6 "
-    "WHERE id = $2 RETURNING *"
+    "UPDATE collections SET name = $2, color = $3, start_date = $4, end_date = $5 "
+    "WHERE id = $1 RETURNING *"
 )
 DELETE_COLLECTION_SQL = "DELETE FROM collections WHERE id = $1 RETURNING id"
 EXISTS_COLLECTION_SQL = "SELECT 1 AS x FROM collections WHERE id = $1"
@@ -176,7 +179,7 @@ class CollectionDB:
         any field it does not want to change, otherwise a blank write will fail
         the NOT NULL constraint on ``name``.
         """
-        args: list[Any] = [collection_id, collection_id, name, color, start_date, end_date]
+        args: list[Any] = [collection_id, name, color, start_date, end_date]
         sql = self._scoped_returning(UPDATE_COLLECTION_SQL, args, user_id, can_see_all)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(sql, *args)

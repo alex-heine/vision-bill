@@ -1,5 +1,6 @@
 """CollectionDB — SQL behaviour with mocked asyncpg."""
 
+import re
 from datetime import date as Date
 from decimal import Decimal
 from typing import Any
@@ -238,6 +239,19 @@ async def test_delete_scopes_owner_before_returning(db: CollectionDB) -> None:
     assert conn.fetchrow.call_args.args[1:] == (CID, UID)
 
 
+def _assert_placeholders_cover_args(sql: str, args: tuple[Any, ...]) -> None:
+    """Every positional argument must be referenced by exactly the $1..$N range.
+
+    Regression: an argument that is passed but never referenced in the SQL (e.g.
+    a stray $1 while the query starts at $2) makes Postgres reject the prepared
+    statement with ``IndeterminateDatatypeError`` (500 on every update).
+    """
+    referenced = {int(n) for n in re.findall(r"\$(\d+)", sql)}
+    assert referenced == set(range(1, len(args) + 1)), (
+        f"SQL references placeholders {sorted(referenced)} but {len(args)} args are passed: {sql}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_update_scopes_owner_before_returning(db: CollectionDB) -> None:
     conn = AsyncMock()
@@ -247,8 +261,22 @@ async def test_update_scopes_owner_before_returning(db: CollectionDB) -> None:
         CID, UID, can_see_all=False, name="X", color=None, start_date=None, end_date=None
     )
     sql = conn.fetchrow.call_args.args[0]
-    assert "AND user_id = $7" in sql
-    assert sql.index("AND user_id = $7") < sql.index(" RETURNING ")
+    assert "AND user_id = $6" in sql
+    assert sql.index("AND user_id = $6") < sql.index(" RETURNING ")
+    _assert_placeholders_cover_args(sql, conn.fetchrow.call_args.args[1:])
+
+
+@pytest.mark.asyncio
+async def test_update_unscoped_placeholders_cover_args(db: CollectionDB) -> None:
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value=_collection_row())
+    db._pool = _make_pool(conn)
+    await db.update(
+        CID, UID, can_see_all=True, name="X", color=None, start_date=None, end_date=None
+    )
+    sql = conn.fetchrow.call_args.args[0]
+    assert "user_id" not in sql
+    _assert_placeholders_cover_args(sql, conn.fetchrow.call_args.args[1:])
 
 
 @pytest.mark.asyncio

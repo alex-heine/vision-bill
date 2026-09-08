@@ -21,7 +21,7 @@
 	} = $props();
 
 	const labelClass = 'mb-1 block text-xs font-medium text-on-surface-variant';
-	const listId = `${id}-tags-listbox`;
+	let listId = $derived(`${id}-tags-listbox`);
 
 	let open = $state(false);
 	let query = $state('');
@@ -227,7 +227,20 @@
 
 <div>
 	<span id="{id}-tags-label" class={labelClass}>{$t('editor.tags')}</span>
-	<div bind:this={boxEl} class="relative" onclick={openDropdown}>
+	<div
+		bind:this={boxEl}
+		class="relative"
+		role="button"
+		tabindex="0"
+		aria-label={$t('editor.tags')}
+		onclick={openDropdown}
+		onkeydown={(event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				event.preventDefault();
+				openDropdown();
+			}
+		}}
+	>
 		<div
 			class="flex min-h-11 cursor-text flex-wrap items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary"
 		>
@@ -339,6 +352,13 @@
 									activeOffset = row.optionIndex;
 									activateRow(row);
 								}}
+								onkeydown={(event) => {
+									if (event.key === 'Enter' || event.key === ' ') {
+										event.preventDefault();
+										activeOffset = row.optionIndex;
+										activateRow(row);
+									}
+								}}
 							>
 								<span>{row.tag}</span>
 								{#if row.selected}
@@ -357,6 +377,13 @@
 								onclick={() => {
 									activeOffset = row.optionIndex;
 									activateRow(row);
+								}}
+								onkeydown={(event) => {
+									if (event.key === 'Enter' || event.key === ' ') {
+										event.preventDefault();
+										activeOffset = row.optionIndex;
+										activateRow(row);
+									}
 								}}
 							>
 								<Icon icon="plus" />

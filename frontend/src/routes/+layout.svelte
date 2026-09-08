@@ -123,16 +123,16 @@
 		| '/receipts'
 		| '/benchmarks/results'
 		| '/settings';
-	type MobileNavPath = '/' | '/search' | '/upload' | '/receipts';
+	type MobileNavPath = '/search' | '/upload' | '/receipts';
 
 	let navItems = $derived([
-		{ path: '/search', label: $t('nav.search'), icon: 'search' as const },
 		{ path: '/', label: $t('nav.dashboard'), icon: 'dashboard' as const },
-		{ path: '/statistics', label: $t('nav.statistics'), icon: 'dashboard' as const },
-		{ path: '/collections', label: $t('nav.collections'), icon: 'folder' as const },
-		{ path: '/queue', label: $t('nav.queue'), icon: 'queue' as const },
 		{ path: '/upload', label: $t('nav.upload'), icon: 'upload' as const },
+		{ path: '/collections', label: $t('nav.collections'), icon: 'folder' as const },
 		{ path: '/receipts', label: $t('nav.receipts'), icon: 'receipts' as const },
+		{ path: '/search', label: $t('nav.search'), icon: 'search' as const },
+		{ path: '/statistics', label: $t('nav.statistics'), icon: 'dashboard' as const },
+		{ path: '/queue', label: $t('nav.queue'), icon: 'queue' as const },
 		...(currentUser?.is_admin
 			? [
 					{
@@ -146,7 +146,6 @@
 	] satisfies { path: NavPath; label: string; icon: IconName }[]);
 
 	let mobileNavItems = $derived([
-		{ path: '/', label: $t('nav.home'), icon: 'dashboard' as const },
 		{ path: '/search', label: $t('nav.search'), icon: 'search' as const },
 		{ path: '/upload', label: $t('nav.upload'), icon: 'upload' as const },
 		{ path: '/receipts', label: $t('nav.receipts'), icon: 'receipts' as const }

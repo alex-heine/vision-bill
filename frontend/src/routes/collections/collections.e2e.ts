@@ -28,6 +28,14 @@ test.describe('collections', () => {
 		await page.getByRole('link', { name: /Berlin Trip/i }).click();
 		await expect(page.getByText(/Receipts|No receipts in this collection/i).first()).toBeVisible();
 
+		// Modify the collection (edit dialog → PATCH). Regression: an
+		// unreferenced $1 placeholder in the UPDATE SQL made every PATCH
+		// return 500 (IndeterminateDatatypeError) right after create+modify.
+		await page.getByRole('button', { name: /Edit collection/i }).click();
+		await page.getByRole('textbox', { name: /Name/i }).fill('Berlin Trip 2026');
+		await page.getByRole('button', { name: /^Save$/i }).click();
+		await expect(page.getByRole('heading', { name: 'Berlin Trip 2026' })).toBeVisible();
+
 		// The statistics page exposes the collection filter.
 		await page.goto('/statistics');
 		await expect(page.getByText(/Collection/).first()).toBeVisible();

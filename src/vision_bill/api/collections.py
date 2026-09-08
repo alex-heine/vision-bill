@@ -2,7 +2,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 
 from ..model.collection import (
     Collection,
@@ -54,7 +54,7 @@ async def create_collection(
 async def get_active_collection(
     receipt_service: CollectionService = Depends(get_collection_service),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
-) -> Collection | JSONResponse:
+) -> Collection | Response:
     """The current user's active (auto-capturing) collection; 204 when none.
 
     Declared before the ``/{collection_id}`` route so the literal path wins.
@@ -63,7 +63,11 @@ async def get_active_collection(
         raise HTTPException(status_code=503, detail="Database not available")
     coll = await receipt_service.active_collection(current_user.id, current_user.can_see_all)
     if coll is None:
-        return JSONResponse(status_code=204, content=None)
+        # A bare Response renders an empty body for a 204. JSONResponse(None)
+        # would render the 4-byte body "null", which h11 rejects for a 204
+        # ("Too much data for declared Content-Length") and aborts the
+        # keep-alive connection.
+        return Response(status_code=204)
     return coll
 
 

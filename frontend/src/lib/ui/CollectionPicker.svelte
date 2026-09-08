@@ -162,7 +162,7 @@
 			{/each}
 		{/if}
 		<input
-			type="text"
+			type="checkbox"
 			id={listId + '-input'}
 			role="combobox"
 			aria-expanded={open}
