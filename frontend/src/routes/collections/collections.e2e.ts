@@ -7,22 +7,15 @@ import { expect, test } from '@playwright/test';
 // default).
 test.describe('collections', () => {
 	test('create a collection, open it, and see the statistics filter', async ({ page, context }) => {
-		// Register a fresh, isolated user and hand the session cookie to the
-		// browser context (the register endpoint sets the HttpOnly cookie).
+		// Register a fresh, isolated user. context.request shares the browser
+		// context's cookie jar, so the vb_session Set-Cookie from this response
+		// is stored automatically and sent on every subsequent navigation — no
+		// manual cookie transfer is needed.
 		const username = `e2e-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 		const register = await context.request.post('/api/v1/auth/register', {
 			data: { username, password: 'e2e-password-123' }
 		});
 		expect(register.status()).toBe(201);
-		const setCookie = register.headers()['set-cookie'];
-		const cookieValue = setCookie?.split(';')[0]?.split('=')[1];
-		expect(cookieValue).toBeTruthy();
-
-		// The page starts at about:blank; visit a public route to obtain the
-		// app's origin so the session cookie can be scoped to the correct host.
-		await page.goto('/login');
-		const origin = new URL(page.url()).origin;
-		await context.addCookies([{ name: 'vb_session', value: cookieValue as string, url: origin }]);
 
 		// Create a collection via the overview page dialog.
 		await page.goto('/collections');

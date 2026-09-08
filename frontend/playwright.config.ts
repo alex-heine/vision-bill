@@ -14,6 +14,9 @@ export default defineConfig({
 	reporter: [['list']],
 	use: {
 		baseURL,
+		// The app is i18n (en/de); the selectors use English strings, so pin
+		// the locale to keep the text-based locators deterministic on any host.
+		locale: 'en-US',
 		// Keep traces on failure to aid debugging of the live-app flow.
 		trace: 'retain-on-failure'
 	}
