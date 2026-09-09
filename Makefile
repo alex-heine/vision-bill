@@ -4,6 +4,7 @@ SHELL := /bin/bash
 
 .PHONY: help install-uv setup migrate run docker-build docker-up docker-down docker-logs test lint context-budget \
 	script-context-budget script-create-benchmark db-configure-roles \
+	e2e-up e2e-down test-e2e \
 	fe-install fe-dev fe-build fe-sync fe-deploy fe-docker fe-check fe-test fe-test-e2e fe-verify fe
 
 help: ## Show this help
@@ -47,8 +48,19 @@ docker-down: ## Stop app and postgres
 docker-logs: ## Follow vision_bill container logs
 	docker compose logs -f vision_bill
 
-test: ## Run unit tests
-	uv run --extra dev pytest tests/
+test: ## Run unit tests (e2e excluded; see test-e2e)
+	uv run --extra dev pytest tests/ -m "not e2e"
+
+e2e-up: ## Build and start the e2e stack (postgres + llm stub + app)
+	docker compose -f docker-compose.e2e.yml up -d --build
+
+e2e-down: ## Stop the e2e stack and delete its volumes
+	docker compose -f docker-compose.e2e.yml down -v
+
+test-e2e: ## Run backend e2e tests (boots the e2e stack first)
+	$(MAKE) e2e-up
+	@uv run python e2e/wait_ready.py
+	uv run --extra dev pytest tests/e2e/
 
 lint: ## Lint (ruff) and type-check (mypy)
 	uv run ruff check src

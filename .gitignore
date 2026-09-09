@@ -6,6 +6,14 @@ tests/data
 docs/
 .opencode/
 
+# E2e test fixtures (real receipts are local + gitignored; a synthetic seed
+# pair is tracked so the suite always has >=1 pipeline case)
+tests/e2e/data/*
+!tests/e2e/data/fixtures.toml
+!tests/e2e/data/README.md
+!tests/e2e/data/seed_receipt.png
+!tests/e2e/data/seed_receipt.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
