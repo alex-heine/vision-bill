@@ -93,11 +93,16 @@ db-configure-roles: ## Create/update PostgreSQL runtime and read-only group role
 context-budget: script-context-budget ## Alias for script-context-budget
 
 # --- Frontend (SvelteKit SPA) -------------------------------------------
-# Node/npm are provided by nvm. Each recipe selects a supported Node version,
-# independent of the caller's global default.
+# Node/npm come from nvm when present (local dev, pinned Node version
+# independent of the caller's global default); otherwise the system Node is
+# used (e.g. GitHub Actions runners, where actions/setup-node provides it).
 
 NVM_DIR ?= $(HOME)/.nvm
+ifeq ($(wildcard $(NVM_DIR)/nvm.sh),)
+NODE :=
+else
 NODE := . "$(NVM_DIR)/nvm.sh" >/dev/null 2>&1 &&
+endif
 FE := frontend
 
 fe-install: ## Install locked frontend npm dependencies

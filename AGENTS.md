@@ -175,8 +175,11 @@ A `Makefile` defines the canonical workflow (`make help` lists targets):
     after a run if a clean tree matters.
   - `make test` excludes e2e (`-m "not e2e"`). e2e is deliberately **not**
     in pre-commit (cold runs cost ~20–25 s per suite and need ports
-    53625/5433/9123 free, which the dev stack may hold) — run it before
-    pushing instead.
+    53625/5433/9123 free, which the dev stack may hold).
+  - **CI** (`.github/workflows/ci.yml`): runs on every push/PR — `checks`
+    (lint + unit + fe-verify), `e2e-backend`, `e2e-frontend`. The repo is
+    public, so GitHub Actions minutes are unlimited and free; CI is the
+    safety net that makes "forgot to run e2e locally" a non-issue.
 - `make lint` — `uv run ruff check src` + `uv run mypy src` (mypy runs in `strict` mode; `alembic/` is excluded from both).
 - `make docker-build` / `docker-up` / `docker-down` / `docker-logs` — container workflow.
 - Operational scripts (values from `.env.scripts`; see `scripts/README.md`):
