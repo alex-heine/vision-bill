@@ -71,8 +71,8 @@ fe-test-e2e: ## Playwright e2e (starts the e2e stack, always tears it down)
 		$(NODE) (cd $(FE) && npm run test:e2e)'
 
 lint: ## Lint (ruff) and type-check (mypy)
-	uv run ruff check src
-	uv run mypy src
+	uv run --extra dev ruff check src
+	uv run --extra dev mypy src
 
 # --- Operational scripts -------------------------------------------------
 # Values loaded here become real environment variables and therefore override

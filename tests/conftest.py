@@ -3,12 +3,19 @@ from pathlib import Path
 
 import pytest
 
-# Test-only default for the required auth secret. ``vision_bill.config`` builds
-# a module-level ``settings`` on import, which needs ``AUTH__SECRET_KEY``; this
-# keeps the test suite independent of an operator's ``.env``. A value already
-# present in the environment (or ``.env``) wins because this uses setdefault.
+# Test-only defaults for the required settings. ``vision_bill.config`` builds
+# a module-level ``settings`` on import, which needs ``AUTH__SECRET_KEY`` plus
+# the LLM and PG fields; this keeps the test suite independent of an operator's
+# ``.env`` (which is gitignored and absent on CI). A value already present in
+# the environment (or ``.env``) wins because this uses setdefault.
 TEST_AUTH_SECRET = "test-secret-key-do-not-use-in-prod"
 os.environ.setdefault("AUTH__SECRET_KEY", TEST_AUTH_SECRET)
+os.environ.setdefault("LLM__HOST", "localhost")
+os.environ.setdefault("LLM__API_KEY", "none")
+os.environ.setdefault("LLM__MODEL_NAME", "llama3:vision")
+os.environ.setdefault("LLM__TEMPERATURE", "0.7")
+os.environ.setdefault("PG__USER", "user")
+os.environ.setdefault("PG__PASSWORD", "pass")
 
 from vision_bill.config import (  # noqa: E402
     ApiSettings,
