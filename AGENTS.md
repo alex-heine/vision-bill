@@ -150,7 +150,27 @@ A `Makefile` defines the canonical workflow (`make help` lists targets):
 - `make setup` — `uv sync --extra dev` (installs ruff, mypy, pytest).
 - `make migrate` — `uv run alembic upgrade head`.
 - `make run` — run the API locally with auto-reload on port 8080.
-- `make test` — `uv run --extra dev pytest tests/`.
+- `make test` — `uv run --extra dev pytest tests/ -m "not e2e"` (unit suite; e2e excluded).
+- **E2E tests** (separate from the fast unit suite): a self-contained Docker
+  Compose stack (`docker-compose.e2e.yml`) boots the real app image +
+  Postgres (host port 5433) + a deterministic OpenAI-compatible LLM stub
+  (`e2e/llm_stub/server.py`, host port 9123). The app is on host port 53625
+  (the Playwright default).
+  - `make e2e-up` / `make e2e-down` — build+start / stop+wipe the stack.
+  - `make test-e2e` — boots the stack, waits for readiness
+    (`e2e/wait_ready.py`), runs `pytest tests/e2e/`.
+  - `make fe-test-e2e` — Playwright; `webServer` auto-starts the same stack
+    (`VB_E2E_BASE_URL` overrides to an already-running stack).
+  - Fixtures: opt-in pairs in `tests/e2e/data/` (gitignored) registered in
+    `tests/e2e/data/fixtures.toml` — each valid `<name>.<img>+<name>.json`
+    (validating as a `Receipt`) becomes one parametrized pipeline test case.
+    See `tests/e2e/data/README.md`.
+  - The stub loads its fixture map at container start — restart it after
+    adding fixtures: `docker compose -f docker-compose.e2e.yml restart llm-stub`.
+  - The settings e2e test rewrites `e2e/config/config.yaml` (it changes
+    `llm.temperature`); restore with `git checkout -- e2e/config/config.yaml`
+    after a run if a clean tree matters.
+  - `make test` excludes e2e (`-m "not e2e"`); pre-commit is unaffected.
 - `make lint` — `uv run ruff check src` + `uv run mypy src` (mypy runs in `strict` mode; `alembic/` is excluded from both).
 - `make docker-build` / `docker-up` / `docker-down` / `docker-logs` — container workflow.
 - Operational scripts (values from `.env.scripts`; see `scripts/README.md`):
