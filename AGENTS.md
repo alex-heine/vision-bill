@@ -156,11 +156,14 @@ A `Makefile` defines the canonical workflow (`make help` lists targets):
   Postgres (host port 5433) + a deterministic OpenAI-compatible LLM stub
   (`e2e/llm_stub/server.py`, host port 9123). The app is on host port 53625
   (the Playwright default).
-  - `make e2e-up` / `make e2e-down` — build+start / stop+wipe the stack.
-  - `make test-e2e` — boots the stack, waits for readiness
-    (`e2e/wait_ready.py`), runs `pytest tests/e2e/`.
-  - `make fe-test-e2e` — Playwright; `webServer` auto-starts the same stack
-    (`VB_E2E_BASE_URL` overrides to an already-running stack).
+  - `make test-e2e` — starts the stack, waits for readiness
+    (`e2e/wait_ready.py`), runs `pytest tests/e2e/`, and tears the stack
+    down on exit (success, failure, or Ctrl-C).
+  - `make fe-test-e2e` — same lifecycle around the Playwright run.
+    (`VB_E2E_BASE_URL` overrides the app URL; running `playwright test`
+    directly still works via the config's `webServer`.)
+  - `make e2e-up` / `make e2e-down` — manual start / stop+wipe for
+    interactive debugging.
   - Fixtures: opt-in pairs in `tests/e2e/data/` (gitignored) registered in
     `tests/e2e/data/fixtures.toml` — each valid `<name>.<img>+<name>.json`
     (validating as a `Receipt`) becomes one parametrized pipeline test case.
@@ -170,7 +173,10 @@ A `Makefile` defines the canonical workflow (`make help` lists targets):
   - The settings e2e test rewrites `e2e/config/config.yaml` (it changes
     `llm.temperature`); restore with `git checkout -- e2e/config/config.yaml`
     after a run if a clean tree matters.
-  - `make test` excludes e2e (`-m "not e2e"`); pre-commit is unaffected.
+  - `make test` excludes e2e (`-m "not e2e"`). e2e is deliberately **not**
+    in pre-commit (cold runs cost ~20–25 s per suite and need ports
+    53625/5433/9123 free, which the dev stack may hold) — run it before
+    pushing instead.
 - `make lint` — `uv run ruff check src` + `uv run mypy src` (mypy runs in `strict` mode; `alembic/` is excluded from both).
 - `make docker-build` / `docker-up` / `docker-down` / `docker-logs` — container workflow.
 - Operational scripts (values from `.env.scripts`; see `scripts/README.md`):

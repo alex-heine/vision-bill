@@ -21,8 +21,11 @@ export default defineConfig({
 		trace: 'retain-on-failure'
 	},
 	webServer: {
-		// Runs from rootDir (frontend/), so ../ = repo root. `-d` detaches; the
-		// stack stays up after the run (stop it with `make e2e-down`).
+		// Fallback for running `playwright test` directly: `make fe-test-e2e`
+		// starts the stack itself and tears it down after the run, in which
+		// case this only reuses it. Running bare `playwright test` leaves the
+		// stack up (stop it with `make e2e-down`).
+		// Runs from rootDir (frontend/), so ../ = repo root.
 		command: 'docker compose -f ../docker-compose.e2e.yml up -d --build',
 		url: `${baseURL}/api/v1/system/ui-config`,
 		reuseExistingServer: true,

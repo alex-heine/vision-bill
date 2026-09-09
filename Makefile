@@ -51,16 +51,24 @@ docker-logs: ## Follow vision_bill container logs
 test: ## Run unit tests (e2e excluded; see test-e2e)
 	uv run --extra dev pytest tests/ -m "not e2e"
 
-e2e-up: ## Build and start the e2e stack (postgres + llm stub + app)
-	docker compose -f docker-compose.e2e.yml up -d --build
+e2e-up: ## Build and start the e2e stack (manual; the test targets manage it)
+	$(E2E_COMPOSE) up -d --build
 
-e2e-down: ## Stop the e2e stack and delete its volumes
-	docker compose -f docker-compose.e2e.yml down -v
+e2e-down: ## Stop the e2e stack and delete its volumes (manual)
+	$(E2E_COMPOSE) down -v
 
-test-e2e: ## Run backend e2e tests (boots the e2e stack first)
-	$(MAKE) e2e-up
-	@uv run python e2e/wait_ready.py
-	uv run --extra dev pytest tests/e2e/
+# The e2e test targets own the stack lifecycle: start it for the run and
+# always tear it down on exit (the EXIT trap covers failures and Ctrl-C).
+E2E_COMPOSE := docker compose -f docker-compose.e2e.yml
+test-e2e: ## Run backend e2e tests (starts the e2e stack, always tears it down)
+	@bash -c 'trap "$(E2E_COMPOSE) down -v" EXIT; \
+		$(E2E_COMPOSE) up -d --build && uv run python e2e/wait_ready.py && \
+		uv run --extra dev pytest tests/e2e/'
+
+fe-test-e2e: ## Playwright e2e (starts the e2e stack, always tears it down)
+	@bash -c 'trap "$(E2E_COMPOSE) down -v" EXIT; \
+		$(E2E_COMPOSE) up -d --build && uv run python e2e/wait_ready.py && \
+		$(NODE) (cd $(FE) && npm run test:e2e)'
 
 lint: ## Lint (ruff) and type-check (mypy)
 	uv run ruff check src
@@ -117,9 +125,6 @@ fe-check: ## Frontend static checks (svelte-check + eslint + prettier)
 
 fe-test: ## Run frontend unit tests (vitest)
 	$(NODE) (cd $(FE) && npm run test)
-
-fe-test-e2e: ## Run frontend E2E tests (playwright)
-	$(NODE) (cd $(FE) && npm run test:e2e)
 
 fe-verify: fe-check fe-test fe-build ## Run frontend checks, unit tests, and a production build
 
