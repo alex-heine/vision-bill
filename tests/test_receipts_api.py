@@ -1,5 +1,6 @@
 """Endpoint wiring tests: real FastAPI app + TestClient, mocked DB and provider."""
 
+import base64
 from collections.abc import Generator
 from datetime import UTC, datetime
 from datetime import date as Date
@@ -25,7 +26,24 @@ from vision_bill.provider.llm.base import LLMProvider, ModelInfo
 from vision_bill.security.dependencies import get_current_user
 from vision_bill.security.models import User
 
-JPEG_PATH = Path(__file__).parent / "data" / "bauhaus.jpeg"
+# A tiny synthetic 1x1 JPEG (Pillow-generated, no PII). The upload endpoints
+# validate the file type with python-magic, so the bytes must be a real JPEG,
+# but the LLM is mocked here, so the actual content is irrelevant. Keeping the
+# bytes in-code instead of reading tests/data/ (gitignored local fixtures)
+# keeps the unit suite runnable on a clean checkout.
+JPEG_BYTES = base64.b64decode(
+    b"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQ"
+    b"DQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQU"
+    b"FBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAABAAEDASIAAhEBAxEB/8QAHwAA"
+    b"AQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1Fh"
+    b"ByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZn"
+    b"aGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19j"
+    b"Z2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAg"
+    b"ECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJy"
+    b"gpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpa"
+    b"anqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPw"
+    b"DwKiiivzI/uM//2Q=="
+)
 RECEIPTS_URL = "/api/v1/receipts"
 SEARCH_URL = "/api/v1/search"
 IMAGES_URL = "/api/v1/images"
@@ -197,7 +215,7 @@ def broken_context(
 
 
 def _upload_jpeg() -> tuple[str, bytes, str]:
-    return ("bauhaus.jpeg", JPEG_PATH.read_bytes(), "image/jpeg")
+    return ("bauhaus.jpeg", JPEG_BYTES, "image/jpeg")
 
 
 # ── Image upload (POST /images) ────────────────────────────────────────
@@ -905,7 +923,7 @@ def test_verify_receipt_moves_image(api_context: ApiContext, settings: Settings)
     assert list(Path(settings.images.tmp_dir).glob("*.png")) == []
     saved = Path(settings.images.save_dir) / f"receipt_{RECEIPT_ID}.png"
     assert saved.exists()
-    assert saved.read_bytes() == JPEG_PATH.read_bytes()
+    assert saved.read_bytes() == JPEG_BYTES
 
 
 def test_verify_receipt_already_verified_conflict(api_context: ApiContext) -> None:
