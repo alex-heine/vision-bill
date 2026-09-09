@@ -1,0 +1,13 @@
+# Pre-seeded persistent config for the e2e app container.
+#
+# llm.temperature is a required Settings field without a default. It is seeded
+# here (instead of via LLM__TEMPERATURE in the compose environment) so that
+# the settings API reports its source as "config" — the e2e test
+# test_settings_sources_and_env_conflict asserts that temperature is NOT
+# environment-controlled while provider/host/model_name are.
+#
+# Note: PUT /api/v1/system/settings rewrites this file (the settings e2e test
+# changes the temperature), so restore it with `git checkout -- e2e/config`
+# after a run if you care about a clean tree.
+llm:
+  temperature: 0.0

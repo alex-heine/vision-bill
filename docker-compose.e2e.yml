@@ -12,10 +12,14 @@
 services:
   pg:
     image: postgres:18
+    pull_policy: always
     environment:
       POSTGRES_DB: vision_bill
       POSTGRES_USER: vision_bill
       POSTGRES_PASSWORD: vision_bill
+      # postgres:18 entrypoint expects the data dir under /var/lib/postgresql
+      # (matches the main docker-compose.yml db service).
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5433:5432"
     healthcheck:
@@ -63,6 +67,8 @@ services:
     volumes:
       - e2e_uploads:/app/uploads
       - e2e_uploads_tmp:/app/uploads_tmp
+      # Pre-seeded config (llm.temperature); see e2e/config/config.yaml.
+      - ./e2e/config:/app/config
     ports:
       - "53625:8080"
 
