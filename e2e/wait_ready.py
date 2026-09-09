@@ -13,7 +13,7 @@ def main() -> int:
     deadline = time.monotonic() + TIMEOUT_S
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(URL, timeout=3) as resp:  # noqa: S310
+            with urllib.request.urlopen(URL, timeout=3) as resp:
                 if resp.status == 200:
                     print(f"e2e app ready at {BASE_URL}")
                     return 0

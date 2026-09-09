@@ -1,0 +1,21 @@
+{
+  "confidence": 97,
+  "merchant_name": "Synthetic Market",
+  "merchant_address": "1 Test Lane, 12345 City",
+  "receipt_number": "SYN-0001",
+  "date": "2026-05-01",
+  "time": "12:30",
+  "currency": "EUR",
+  "category": "grocery",
+  "line_items": [
+    { "description": "Synthetic Bread", "quantity": 1.0, "unit_price": "2.50", "total_price": "2.50" },
+    { "description": "Synthetic Milk", "quantity": 2.0, "unit_price": "1.25", "total_price": "2.50" }
+  ],
+  "taxes": [ { "name": "VAT", "rate": 0.19, "amount": "0.95" } ],
+  "subtotal": "5.00",
+  "discount_total": "0",
+  "tax_total": "0.95",
+  "tip": null,
+  "total": "5.95",
+  "payment_method": "debit_card"
+}

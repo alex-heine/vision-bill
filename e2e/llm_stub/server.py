@@ -113,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def do_GET(self) -> None:  # noqa: N802 (http.server API)
+    def do_GET(self) -> None:
         if state["mode"] == "down":
             self._send(503, {"error": "stub is in down mode"})
             return
@@ -124,7 +124,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, {"error": "not found"})
 
-    def do_POST(self) -> None:  # noqa: N802 (http.server API)
+    def do_POST(self) -> None:
         if self.path == "/__mode":
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
