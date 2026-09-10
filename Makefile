@@ -131,7 +131,10 @@ fe-check: ## Frontend static checks (svelte-check + eslint + prettier)
 fe-test: ## Run frontend unit tests (vitest)
 	$(NODE) (cd $(FE) && npm run test)
 
-fe-verify: fe-check fe-test fe-build ## Run frontend checks, unit tests, and a production build
+fe-typecheck-e2e: ## Type-check the Playwright e2e suite
+	$(NODE) (cd $(FE) && npm run typecheck:e2e)
+
+fe-verify: fe-check fe-test fe-typecheck-e2e fe-build ## Run frontend checks, unit tests, and a production build
 
 fe: ## Run an npm script in frontend/ (make fe CMD=<script> [ARGS="..."])
 	@test -n "$(CMD)" || { echo "usage: make fe CMD=<npm-script> [ARGS=\"arg1 arg2\"]"; exit 1; }
