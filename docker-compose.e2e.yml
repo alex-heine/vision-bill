@@ -37,6 +37,7 @@ services:
     volumes:
       - ./e2e/llm_stub:/stub:ro
       - ./tests/e2e/data:/data:ro
+      - ./e2e/llm_stub/fixtures:/fixtures:ro
     ports:
       - "9123:9123"
 
@@ -51,7 +52,6 @@ services:
       AUTH__SECRET_KEY: e2e-secret-do-not-use
       AUTH__BOOTSTRAP_USERNAME: admin
       AUTH__BOOTSTRAP_PASSWORD: admin-e2e-pass
-      AUTH__ALLOW_REGISTRATION: "true"
       AUTH__ADMIN_CAN_SEE_ALL: "true"
       LLM__PROVIDER: openai
       LLM__HOST: http://llm-stub:9123/v1
