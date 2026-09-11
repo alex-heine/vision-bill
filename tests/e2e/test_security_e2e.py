@@ -2,7 +2,8 @@
 
 Complements the unit tests (pure logic) with real-stack pinning: the HTTP
 boundary must never 500 on hostile input, the hand-rolled HMAC session must
-reject forgeries, and free text must round-trip verbatim.
+reject forgeries, hostile collection names round-trip through normalization,
+and free text is stored verbatim in SQL.
 """
 
 import base64
@@ -146,7 +147,7 @@ async def test_sql_metacharacter_username_roundtrip(http_factory, pg) -> None:
 # --- free text round-trips verbatim ------------------------------------------
 
 
-def test_free_text_roundtrip_verbatim(http_factory) -> None:
+def test_hostile_collection_name_roundtrips_normalized(http_factory) -> None:
     client, _ = register_user(http_factory, "sec")
     raw_name = 'Script <img src=x onerror="alert(1)"> & "quotes"\nnewline \U0001f680'
     # Collection names are normalized (whitespace collapsed) on storage.
@@ -183,6 +184,13 @@ def test_upload_path_traversal_filename(http_factory) -> None:
 
 
 def test_settings_temperature_out_of_range(http_factory) -> None:
+    """EXPECTED RED (#5): out-of-range temperature must be rejected with 422.
+
+    The product does not do this: ``LLMSettingsUpdate.temperature`` is a bare
+    ``float`` with no range constraint, so 99 is accepted (200) and persisted.
+    This test pins the correct boundary behaviour and stays red until the
+    product adds range validation (e.g. ``ge=0, le=2``).
+    """
     admin = _admin_client(http_factory)
     view = admin.get(f"{API}/system/settings").json()
     response = admin.put(
@@ -192,10 +200,10 @@ def test_settings_temperature_out_of_range(http_factory) -> None:
             "allow_registration": view["allow_registration"],
         },
     )
-    # NOTE: LLMSettingsUpdate.temperature has no range validation (plain float).
-    # The API accepts 99 and persists it — 422 was expected but the product
-    # does not clamp/validate the range.  Actual: 200.
-    assert response.status_code == 200, response.text
+    assert response.status_code == 422, (
+        f"Expected 422 (out-of-range temperature rejected) but got "
+        f"{response.status_code}: {response.text}"
+    )
 
 
 def test_settings_non_admin_forbidden(http_factory) -> None:
