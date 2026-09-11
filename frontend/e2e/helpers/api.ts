@@ -40,8 +40,17 @@ export async function putSettings(
 
 /** Create a collection through the API; returns its id. */
 export async function createCollection(context: BrowserContext, name: string): Promise<string> {
+	// Pass session cookie via explicit header — APIRequestContext.setCookie
+	// is untyped in @types/playwright even though it works at runtime.
+	const cookies = await context.cookies();
+	const sessionCookie = cookies.find((c) => c.name === 'vb_session');
+	const headers: Record<string, string> = {};
+	if (sessionCookie) {
+		headers.Cookie = `vb_session=${sessionCookie.value}`;
+	}
 	const response = await context.request.post('/api/v1/collections', {
-		data: { name, color: '#2563EB', start_date: null, end_date: null }
+		data: { name, color: '#2563EB', start_date: null, end_date: null },
+		headers: Object.keys(headers).length > 0 ? headers : undefined
 	});
 	if (response.status() !== 201) {
 		throw new Error(`create collection failed: ${response.status()} ${await response.text()}`);
