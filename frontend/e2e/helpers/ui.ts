@@ -32,7 +32,7 @@ export function receiptIdFromUrl(page: Page): string {
 	return page.url().split('/').pop() ?? '';
 }
 
-async function ensureSession(context: BrowserContext): Promise<void> {
+export async function ensureSession(context: BrowserContext): Promise<void> {
 	const me = await context.request.get('/api/v1/auth/me');
 	if (me.status() === 200) return; // reuse the context's existing user
 	await registerUser(context, 'e2e-up');
