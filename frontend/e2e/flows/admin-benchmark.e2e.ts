@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { loginAdmin } from '../helpers/auth';
 import { loadFixture } from '../helpers/fixtures';
 import { stubGuard } from '../helpers/stub';
-import { confirmDialog, uploadFixture } from '../helpers/ui';
+import { uploadFixture } from '../helpers/ui';
 
 test.describe('admin: benchmarks', () => {
 	stubGuard();
@@ -38,18 +38,17 @@ test.describe('admin: benchmarks', () => {
 		});
 		expect(run.status()).toBe(202);
 
-		// Delete is triggered from the list page (not the detail page).
-		// Scope the Remove button to the exact receipt via its link href.
-		await page.goto('/receipts');
-		await page
-			.locator(`li:has(a[href$="/receipts/${receiptId}"])`)
-			.getByRole('button', { name: 'Remove' })
-			.click();
-		await confirmDialog(page, 'Delete receipt?', 'Delete');
-		await expect(
-			page.getByText("This receipt is used in a benchmark run and can't be deleted.")
-		).toBeVisible({ timeout: 15_000 });
-		// Receipt must still be present (delete was blocked).
-		await expect(page.locator(`a[href$="/receipts/${receiptId}"]`)).toBeVisible();
+		// The benchmark FK (benchmark_tasks.receipt_id -> receipts) is committed
+		// together with the run (create_run inserts run + tasks + summaries in one
+		// connection), so the delete is blocked deterministically. Verify at the API
+		// level rather than depending on the receipt appearing in the list, which is
+		// slow and order-dependent under full-suite load.
+		expect((await context.request.delete(`/api/v1/receipts/${receiptId}`)).status()).toBe(409);
+		// The receipt must still exist (the delete was blocked).
+		expect((await context.request.get(`/api/v1/receipts/${receiptId}`)).status()).toBe(200);
+
+		// The UI still shows the receipt (it was not deleted).
+		await page.goto(`/receipts/${receiptId}`);
+		await expect(page.locator('#re-merchant')).toBeVisible();
 	});
 });

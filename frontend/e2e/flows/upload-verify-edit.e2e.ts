@@ -18,12 +18,15 @@ test.describe('upload, edit, save, verify', () => {
 		await expect(page.locator('#re-merchant')).toHaveValue('Aldi Test');
 		await expect(page.locator('#re-date')).toHaveValue('2026-05-01');
 		await expect(page.locator('#re-currency')).toHaveValue('EUR');
-		// Line-item order is by DB UUID (non-deterministic); assert presence.
-		const descs = await page
-			.locator('input[placeholder="Description"]')
-			.evaluateAll((els) => (els as HTMLInputElement[]).map((e) => e.value));
-		expect(descs).toContain('Milk');
-		expect(descs).toContain('Bread');
+		// Line-item order is by DB UUID (non-deterministic), and a save
+		// re-creates the line items with fresh UUIDs (so the order can change
+		// across a reload). Address items by description, never by #li-0 index.
+		const lineIndex = (desc: string) =>
+			page
+				.locator('input[placeholder="Description"]')
+				.evaluateAll((els, d) => (els as HTMLInputElement[]).findIndex((e) => e.value === d), desc);
+		expect(await lineIndex('Milk')).toBeGreaterThanOrEqual(0);
+		expect(await lineIndex('Bread')).toBeGreaterThanOrEqual(0);
 		await expect(page.locator('#tax-0-name')).toHaveValue('VAT');
 		await expect(page.locator('#tax-0-amount')).toHaveValue('0.36');
 
@@ -34,7 +37,8 @@ test.describe('upload, edit, save, verify', () => {
 		// Edit category, currency, quantity, a new tag and the tax amount.
 		await page.locator('#re-category').selectOption('electronics');
 		await page.locator('#re-currency').fill('USD');
-		await page.locator('#li-0-qty').fill('2');
+		const milkIdx = await lineIndex('Milk');
+		await page.locator(`#li-${milkIdx}-qty`).fill('2');
 		await page.getByRole('button', { name: 'Tags' }).first().click();
 		await page.getByPlaceholder('Search or add tags…').first().fill('test tag');
 		await page.getByPlaceholder('Search or add tags…').first().press('Enter');
@@ -50,7 +54,8 @@ test.describe('upload, edit, save, verify', () => {
 		await page.reload();
 		await expect(page.locator('#re-merchant')).toHaveValue('Aldi Test Edited');
 		await expect(page.locator('#re-category')).toHaveValue('electronics');
-		await expect(page.locator('#li-0-qty')).toHaveValue('2');
+		const milkIdx2 = await lineIndex('Milk');
+		await expect(page.locator(`#li-${milkIdx2}-qty`)).toHaveValue('2');
 		await expect(
 			page.locator('span.rounded-full.bg-primary-container').filter({ hasText: 'test tag' })
 		).toBeVisible();
