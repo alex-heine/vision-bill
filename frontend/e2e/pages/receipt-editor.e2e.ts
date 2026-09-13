@@ -88,12 +88,37 @@ test.describe('receipt editor', () => {
 		await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 	});
 
-	test('negative subtotal shows the amount error', async ({ page, context }) => {
+	test('negative subtotal is accepted (pure refund)', async ({ page, context }) => {
 		test.setTimeout(120_000);
-		await uploadFixture(page, context, await loadFixture('a'), { verify: false });
-		await page.locator('#re-subtotal').fill('-1');
-		await expect(page.getByText('Amount must be a non-negative number.')).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+		await uploadFixture(page, context, await loadFixture('b'), { verify: false });
+		// A negative subtotal is valid (a pure deposit/withdrawal return).
+		await page.locator('#re-subtotal').fill('-2.50');
+		await expect(page.getByText('Amount must be a valid number.')).toHaveCount(0);
+		await expect(page.getByText('Amount must be a non-negative number.')).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+	});
+
+	test('negative line-item price (deposit/refund) is accepted and saves', async ({
+		page,
+		context
+	}) => {
+		test.setTimeout(120_000);
+		await uploadFixture(page, context, await loadFixture('b'), { verify: false });
+		// A deposit / withdrawal / refund / credit line item is a NEGATIVE
+		// unit_price + total_price. The editor accepts it, saves it, and it
+		// round-trips.
+		await page.getByRole('button', { name: 'Add item' }).click();
+		await page.getByPlaceholder('Description').nth(1).fill('Bottle deposit refund');
+		await page.locator('#li-1-qty').fill('1');
+		await page.locator('#li-1-unit').fill('-0.75');
+		await page.locator('#li-1-total').fill('-0.75');
+		await expect(page.getByText('Amount must be a valid number.')).toHaveCount(0);
+		await expect(page.getByText('Amount must be a non-negative number.')).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+		await page.getByRole('button', { name: 'Save', exact: true }).click();
+		await expect(page.getByText('Changes saved')).toBeVisible({ timeout: 15_000 });
+		await page.reload();
+		await expect(page.locator('#li-1-total')).toHaveValue('-0.75');
 	});
 
 	// NOTE: confidence 101 validation test removed — ReceiptEditor renders
@@ -239,9 +264,6 @@ test.describe('receipt editor', () => {
 		await expect(page.getByRole('link', { name: 'Back' })).toBeVisible();
 	});
 
-	// EXPECTED RED #3 — the page only queries for valid UUIDs; a non-UUID path
-	// currently renders a blank area instead of the not-found state. Stays red
-	// by design (reported, fixed in a separate session).
 	test('non-uuid path shows the not-found state', async ({ page, context }) => {
 		await registerUser(context, 'e2e-editor');
 		await page.goto('/receipts/not-a-uuid');

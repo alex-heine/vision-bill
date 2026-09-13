@@ -5,7 +5,7 @@
 	import { api } from '$lib/api/client';
 	import { queryClient } from '$lib/query/client';
 	import { queryKeys } from '$lib/query/keys';
-	import { formatMoney, isPlainDecimal } from '$lib/ui/money';
+	import { formatMoney, isPlainDecimal, isSignedDecimal } from '$lib/ui/money';
 	import { snackbar } from '$lib/ui/snackbar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import TagEditor from '$lib/ui/TagEditor.svelte';
@@ -188,8 +188,8 @@
 			set.add('editor.dateRequired');
 		}
 		for (const key of REQUIRED_AMOUNTS) {
-			if (!isPlainDecimal(form[key])) {
-				set.add('editor.invalidAmount');
+			if (!isSignedDecimal(form[key])) {
+				set.add('editor.invalidNumber');
 			}
 		}
 		for (const key of OPTIONAL_AMOUNTS) {
@@ -211,8 +211,8 @@
 			if (line.quantity.trim() === '' || !Number.isFinite(quantity) || quantity <= 0) {
 				set.add('editor.invalidQuantity');
 			}
-			if (!isPlainDecimal(line.unit_price) || !isPlainDecimal(line.total_price)) {
-				set.add('editor.invalidAmount');
+			if (!isSignedDecimal(line.unit_price) || !isSignedDecimal(line.total_price)) {
+				set.add('editor.invalidNumber');
 			}
 		}
 		for (const tax of form.taxLines) {
@@ -233,7 +233,7 @@
 	/** Subtotal − discount + tax + tip, computed with exact decimal math. */
 	let expectedTotal = $derived.by((): number | null => {
 		const subtotal = form.subtotal.trim();
-		if (!isPlainDecimal(subtotal)) {
+		if (!isSignedDecimal(subtotal)) {
 			return null;
 		}
 		const discount = form.discount_total.trim() || '0';
