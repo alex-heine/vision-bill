@@ -118,7 +118,22 @@ test.describe('receipt editor', () => {
 		await page.getByRole('button', { name: 'Save', exact: true }).click();
 		await expect(page.getByText('Changes saved')).toBeVisible({ timeout: 15_000 });
 		await page.reload();
-		await expect(page.locator('#li-1-total')).toHaveValue('-0.75');
+		// Line items are NOT order-preserved across save (persisted with
+		// random UUIDs, listed `ORDER BY id`), so locate the deposit item by
+		// its description rather than assuming a fixed index.
+		const totalInputs = page.locator('input[id^="li-"][id$="-total"]');
+		const descInputs = page.locator('input[placeholder="Description"]');
+		// Wait for both line items (Milk + deposit) to render after reload.
+		await expect(totalInputs).toHaveCount(2);
+		const lineCount = await totalInputs.count();
+		let depositTotal: string | null = null;
+		for (let i = 0; i < lineCount; i += 1) {
+			const desc = await descInputs.nth(i).inputValue();
+			if (desc === 'Bottle deposit refund') {
+				depositTotal = await totalInputs.nth(i).inputValue();
+			}
+		}
+		expect(depositTotal).toBe('-0.75');
 	});
 
 	// NOTE: confidence 101 validation test removed — ReceiptEditor renders
