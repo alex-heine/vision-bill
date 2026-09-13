@@ -160,8 +160,6 @@ test.describe('collections', () => {
 		await expect(page.getByRole('link', { name: 'Back' })).toBeVisible();
 	});
 
-	// EXPECTED RED #4 — same gap as the receipt editor: non-UUID paths render
-	// a blank area instead of the not-found state. Stays red by design.
 	test('non-uuid path shows the not-found state', async ({ page, context }) => {
 		await registerUser(context, 'e2e-collections');
 		await page.goto('/collections/not-a-collection');

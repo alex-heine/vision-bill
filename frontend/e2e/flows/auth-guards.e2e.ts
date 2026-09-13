@@ -32,16 +32,12 @@ test.describe('auth guards', () => {
 		await expect(page).toHaveURL(baseURL + '/');
 	});
 
-	// EXPECTED RED #1 — /benchmarks has no admin redirect guard yet (the form
-	// renders and the create call fails with a raw 403). Stays red by design.
 	test('non-admin /benchmarks redirects home', async ({ page, context, baseURL }) => {
 		await registerUser(context, 'e2e-guard');
 		await page.goto('/benchmarks');
 		await expect(page).toHaveURL(baseURL + '/');
 	});
 
-	// EXPECTED RED #2 — same gap on the results page (raw "Unable to load
-	// benchmark runs." error instead of a redirect). Stays red by design.
 	test('non-admin /benchmarks/results redirects home', async ({ page, context, baseURL }) => {
 		await registerUser(context, 'e2e-guard');
 		await page.goto('/benchmarks/results');

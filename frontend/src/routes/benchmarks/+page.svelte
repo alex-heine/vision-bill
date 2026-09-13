@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
+	import { session } from '$lib/auth';
 
 	type Model = { id: string };
 	let models = $state<Model[]>([]),
@@ -18,6 +19,12 @@
 		confirm = $state(false),
 		creating = $state(false),
 		error = $state('');
+	// Admin-only page: bounce non-admins home (mirrors the /settings guard).
+	$effect(() => {
+		if ($session !== 'loading' && $session !== null && !$session.is_admin) {
+			void goto(resolve('/'));
+		}
+	});
 	onMount(async () => {
 		try {
 			const response = await fetch('/api/v1/llm/models');
