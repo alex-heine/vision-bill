@@ -40,6 +40,7 @@ class LineItemRow(BaseModel):
     unit_price: Decimal
     total_price: Decimal
     tags: list[str] = Field(default_factory=list)
+    position: int = 0
 
 
 class TaxLineRow(BaseModel):

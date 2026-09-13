@@ -92,8 +92,8 @@ DELETE_RECEIPT_SQL = "DELETE FROM receipts WHERE id = $1 RETURNING *"
 INSERT_LINE_ITEM_SQL = """
     INSERT INTO line_items
         (receipt_id, description, quantity, unit_price,
-         total_price, tags)
-    VALUES ($1, $2, $3, $4, $5, $6)
+         total_price, tags, position)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
 """
 
 INSERT_TAX_SQL = """
@@ -186,7 +186,7 @@ STATS_WEEKLY_SQL = """
     GROUP BY week_start, currency
     ORDER BY week_start, currency
 """
-LIST_LINE_ITEMS_SQL = "SELECT * FROM line_items WHERE receipt_id = $1 ORDER BY id"
+LIST_LINE_ITEMS_SQL = "SELECT * FROM line_items WHERE receipt_id = $1 ORDER BY position"
 LIST_TAXES_SQL = "SELECT * FROM taxes WHERE receipt_id = $1 ORDER BY id"
 LIST_COLLECTION_IDS_FOR_RECEIPT_SQL = (
     "SELECT collection_id FROM receipt_collections WHERE receipt_id = $1"
@@ -278,6 +278,7 @@ class ReceiptDB:
             unit_price=Decimal(d["unit_price"]),
             total_price=Decimal(d["total_price"]),
             tags=list(d.get("tags") or []),
+            position=d["position"],
         )
 
     @staticmethod
@@ -311,7 +312,7 @@ class ReceiptDB:
     ) -> None:
         """Insert the receipt's line items and taxes (shared insert logic)."""
         if receipt.line_items:
-            for item in receipt.line_items:
+            for index, item in enumerate(receipt.line_items):
                 await conn.execute(
                     INSERT_LINE_ITEM_SQL,
                     receipt_id,
@@ -320,6 +321,7 @@ class ReceiptDB:
                     float(item.unit_price),
                     float(item.total_price),
                     list(item.tags),
+                    index,
                 )
 
         if receipt.taxes:
