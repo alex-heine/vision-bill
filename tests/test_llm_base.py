@@ -70,6 +70,14 @@ def test_build_prompt_mentions_negative_pfand_line_items():
     assert "Pfand" in prompt
 
 
+def test_build_prompt_tells_to_use_deposit_tag_for_deposit_pfand_lines():
+    """The prompt must tell the model to mark deposit/Pfand line items with the `deposit` tag."""
+    prompt = _ConcreteProvider().build_prompt()
+
+    assert "the tag `deposit`" in prompt
+    assert "container/Pfand" in prompt
+
+
 @pytest.mark.parametrize(
     "tags, expected_snippet",
     [

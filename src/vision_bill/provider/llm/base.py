@@ -95,6 +95,8 @@ class LLMProvider(ABC):
     Set the top-level category to the single best category for the whole purchase.
     Use a negative unit_price and total_price for any line item that returns money to the customer
     (a refund, a credit, or a deposit/Pfand that is given back).
+    Tag any line item that is a deposit or a container/Pfand refund (a deposit being given back to
+    the customer) with the tag `deposit`, in addition to its negative unit_price and total_price.
     Do not add any additional text or commentary. Only provide the JSON response matching this schema:
 
     {Receipt.model_json_schema()}
