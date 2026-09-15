@@ -1,0 +1,21 @@
+{
+  "confidence": 95,
+  "merchant_name": "Pfand Corner Store",
+  "merchant_address": "2 Deposit Street, 54321 Town",
+  "receipt_number": "PFAND-0001",
+  "date": "2026-05-02",
+  "time": "14:15",
+  "currency": "EUR",
+  "category": "grocery",
+  "line_items": [
+    { "description": "Sparkling Water", "quantity": 2.0, "unit_price": "1.50", "total_price": "3.00" },
+    { "description": "Bottle deposit refund (Pfand)", "quantity": 2.0, "unit_price": "-0.25", "total_price": "-0.50", "tags": ["deposit"] }
+  ],
+  "taxes": [],
+  "subtotal": "2.50",
+  "discount_total": "0",
+  "tax_total": "0.00",
+  "tip": null,
+  "total": "2.50",
+  "payment_method": "cash"
+}

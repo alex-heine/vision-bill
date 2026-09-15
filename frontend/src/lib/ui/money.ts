@@ -9,6 +9,7 @@
 
 const INT_RE = /^\d+$/;
 const DEC_RE = /^\d+\.\d+$/;
+const SIGNED_RE = /^-?\d+(\.\d+)?$/;
 
 /** True when the value is a plain (possibly negative-free) decimal string. */
 export function isPlainDecimal(value: string | null | undefined): boolean {
@@ -17,6 +18,14 @@ export function isPlainDecimal(value: string | null | undefined): boolean {
 	}
 	const s = value.trim();
 	return INT_RE.test(s) || DEC_RE.test(s);
+}
+
+/** True when the value is a decimal string that may be negative (e.g. "-0.75"). */
+export function isSignedDecimal(value: string | null | undefined): boolean {
+	if (value === null || value === undefined) {
+		return false;
+	}
+	return SIGNED_RE.test(value.trim());
 }
 
 interface Scaled {

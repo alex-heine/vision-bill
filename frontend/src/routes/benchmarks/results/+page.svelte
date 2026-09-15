@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
+	import { session } from '$lib/auth';
 
 	type Summary = {
 		model_id: string;
@@ -26,6 +28,12 @@
 		selectedId = $state<string | null>(null),
 		result = $state<Status | null>(null),
 		error = $state('');
+	// Admin-only page: bounce non-admins home (mirrors the /settings guard).
+	$effect(() => {
+		if ($session !== 'loading' && $session !== null && !$session.is_admin) {
+			void goto(resolve('/'));
+		}
+	});
 	const fmt = (value: number | null, digits = 2) => (value === null ? '—' : value.toFixed(digits));
 	async function refresh() {
 		try {

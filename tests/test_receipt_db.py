@@ -20,6 +20,7 @@ from vision_bill.provider.db.receipt_db import (
     INSERT_LINE_ITEM_SQL,
     INSERT_TAG_SQL,
     INSERT_TAX_SQL,
+    LIST_LINE_ITEMS_SQL,
     LIST_TAGS_SQL,
     SEARCH_PRODUCTS_BASE_SQL,
     ReceiptDB,
@@ -84,6 +85,7 @@ def _line_item_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
         "unit_price": Decimal("10.00"),
         "total_price": Decimal("20.00"),
         "tags": ["test"],
+        "position": 0,
     }
 
 
@@ -97,6 +99,7 @@ def _pfand_line_item_row(receipt_id: UUID = RECEIPT_ID) -> dict[str, Any]:
         "unit_price": Decimal("-0.25"),
         "total_price": Decimal("-0.75"),
         "tags": ["other"],
+        "position": 0,
     }
 
 
@@ -676,3 +679,46 @@ async def test_list_receipts_filters_by_collection(db: ReceiptDB) -> None:
     assert "collection_id" in sql
     # The collection id is a bound parameter, not interpolated.
     assert coll_id in conn.fetch.call_args.args[1:]
+
+
+@pytest.mark.asyncio
+async def test_persist_receipt_line_items_get_position(db: ReceiptDB) -> None:
+    """Each persisted line item must receive a 0-based position matching its array index."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.fetchrow = AsyncMock(return_value=_receipt_row(image_id=IMAGE_ID))
+    mock_conn.execute = AsyncMock()
+
+    receipt = _make_receipt()
+    # Add more items so we can verify 0-based indexing across multiple inserts.
+    receipt.line_items.extend(
+        [
+            LineItem(
+                description="Item B",
+                quantity=1,
+                unit_price=Decimal("5.00"),
+                total_price=Decimal("5.00"),
+            ),
+            LineItem(
+                description="Item C",
+                quantity=3,
+                unit_price=Decimal("2.00"),
+                total_price=Decimal("6.00"),
+            ),
+        ]
+    )
+
+    await db.persist_receipt(receipt, image_id=IMAGE_ID, status="unverified")
+
+    insert_calls = [
+        call for call in mock_conn.execute.call_args_list if call.args[0] == INSERT_LINE_ITEM_SQL
+    ]
+    assert len(insert_calls) == 3
+    for idx, call in enumerate(insert_calls):
+        # The 7th bound parameter ($7) is position (args[7] because args[0] is SQL).
+        assert call.args[7] == idx
+
+
+def test_list_line_items_sql_orders_by_position() -> None:
+    """Line items must be fetched ordered by position, not by UUID."""
+    assert "ORDER BY position" in LIST_LINE_ITEMS_SQL

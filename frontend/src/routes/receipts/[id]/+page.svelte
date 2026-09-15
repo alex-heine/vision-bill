@@ -28,7 +28,8 @@
 	);
 
 	let notFound = $derived(
-		detail.status === 'error' && detail.error instanceof ApiError && detail.error.status === 404
+		!uuidPattern.test(id) ||
+			(detail.status === 'error' && detail.error instanceof ApiError && detail.error.status === 404)
 	);
 	let data = $derived(detail.data ?? null);
 	let canVerify = $derived(data !== null && data.receipt.status === 'unverified');

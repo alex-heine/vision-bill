@@ -6,11 +6,16 @@ import { defineConfig } from '@playwright/test';
 const baseURL = process.env.VB_E2E_BASE_URL ?? 'http://localhost:53625';
 
 export default defineConfig({
-	testDir: './src',
+	testDir: './e2e',
 	testMatch: /.*\.e2e\.ts$/,
 	timeout: 60_000,
-	retries: 0,
+	// The LLM stub's mode is global state shared by every test, so the suite
+	// must run serially — parallel workers would interleave mode changes.
+	// (~60 fast tests against a local stack: a few minutes, not a bottleneck.)
 	fullyParallel: false,
+	workers: 1,
+	/* Retry on CI only */
+	retries: process.env.CI ? 2 : 0,
 	reporter: [['list']],
 	use: {
 		baseURL,

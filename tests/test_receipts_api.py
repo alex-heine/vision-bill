@@ -742,8 +742,8 @@ def test_update_receipt_accepts_suggested_tags(api_context: ApiContext) -> None:
         if call.args and call.args[0] == receipt_db_module.INSERT_LINE_ITEM_SQL
     ]
     assert len(insert_calls) == 1
-    # The last bound parameter is the tags array: normalized + deduped.
-    assert insert_calls[0].args[-1] == ["brunch"]
+    # The second-to-last bound parameter is the tags array: normalized + deduped.
+    assert insert_calls[0].args[-2] == ["brunch"]
 
 
 # ── Receipts (GET /receipts, GET /receipts/{id}, verify) ───────────────

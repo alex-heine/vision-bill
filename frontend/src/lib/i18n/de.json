@@ -310,6 +310,7 @@
 		"merchantRequired": "Händler ist erforderlich.",
 		"dateRequired": "Ein gültiges Datum ist erforderlich.",
 		"invalidAmount": "Betrag muss eine nicht negative Zahl sein.",
+		"invalidNumber": "Betrag muss eine gültige Zahl sein.",
 		"invalidQuantity": "Menge muss größer als null sein.",
 		"invalidRate": "Satz muss eine Zahl zwischen 0 und 1 sein.",
 		"invalidConfidence": "Konfidenz muss eine ganze Zahl zwischen 0 und 100 sein."

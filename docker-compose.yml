@@ -1,6 +1,7 @@
 services:
   vision_bill:
     build: .
+    image: vision-bill:${VB_IMAGE_TAG:-latest}
     restart: always
     env_file:
       - .env

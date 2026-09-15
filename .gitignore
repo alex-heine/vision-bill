@@ -4,6 +4,7 @@ server_data/uploads_tmp/*
 server_data/config/*
 tests/data
 docs/
+deploy/
 .opencode/
 
 # E2e test fixtures (real receipts are local + gitignored; a synthetic seed
