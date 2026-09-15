@@ -2,10 +2,10 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help install-uv setup migrate run docker-build docker-up docker-down docker-logs test lint context-budget \
+.PHONY: help install-uv setup migrate run docker-up docker-down docker-logs test lint context-budget \
 	script-context-budget script-create-benchmark db-configure-roles \
 	e2e-up e2e-down test-e2e \
-	fe-install fe-dev fe-build fe-sync fe-deploy fe-docker fe-check fe-test fe-test-e2e fe-verify fe
+	fe-install fe-dev fe-build fe-sync fe-check fe-test fe-test-e2e fe-verify fe
 
 help: ## Show this help
 	@echo "vision-bill — available targets:"
@@ -20,24 +20,6 @@ migrate: ## Apply database migrations
 
 run: ## Run the API locally with auto-reload
 	uv run uvicorn src.vision_bill.main:app --host 0.0.0.0 --port 8080 --reload --reload-dir ./src/vision_bill
-
-# Docker Hub target for a future `make docker-push` (push is skipped for now).
-# `docker-build` always tags vision-bill:latest locally; it also tags the full
-# Hub name only when a username is provided, e.g.:
-#   make docker-build DOCKER_USER=me
-#   make docker-build DOCKER_USER=me DOCKER_TAG=v1.0
-DOCKER_REGISTRY ?= docker.io
-DOCKER_USER ?=
-DOCKER_REPO ?= vision-bill
-DOCKER_TAG ?= latest
-ifeq ($(strip $(DOCKER_USER)),)
-IMAGE :=
-else
-IMAGE := $(DOCKER_REGISTRY)/$(DOCKER_USER)/$(DOCKER_REPO):$(DOCKER_TAG)
-endif
-
-docker-build: ## Build the image (personal data excluded via .dockerignore)
-	docker build -t vision-bill:$(DOCKER_TAG) $(if $(IMAGE),-t $(IMAGE)) .
 
 docker-up: ## Build image + start app and postgres
 	docker compose up --build
@@ -119,11 +101,6 @@ fe-sync: fe-build ## Copy the built SPA into src/vision_bill/static for FastAPI/
 	mkdir -p src/vision_bill/static
 	cp -r $(FE)/out/. src/vision_bill/static/
 	touch src/vision_bill/static/.gitkeep
-
-fe-deploy: fe-sync ## Build and sync the SPA into the host directory mounted by Docker
-
-fe-docker: fe-deploy ## Build, sync, and restart the Docker API service
-	docker compose restart vision_bill
 
 fe-check: ## Frontend static checks (svelte-check + eslint + prettier)
 	$(NODE) (cd $(FE) && npm run check && npm run lint && npm run format:check)

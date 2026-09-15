@@ -30,7 +30,7 @@ This document provides technical context for agents working on the vision-bill p
 - `alembic/` — Migration tooling; versions `0001`–`0003` in `alembic/versions/`.
 - `tests/` — Pytest suite (`asyncio_mode = "auto"`). `tests/data/` (gitignored) holds local ground-truth fixtures: receipt images + expected JSON pairs.
 - `scripts/` — Operational scripts; see `scripts/README.md` for setup (`.env.scripts`) and usage.
-- `docs/` — Design and deployment documentation (gitignored; local-only). `docs/deploy/truenas/` contains the NAS deployment guide.
+- `docs/` — Design and deployment documentation (gitignored; local-only).
 - `image-sticher/` — Standalone client-side image-stitching HTML tool, served via nginx on port 8081 (`image-sticher/nginx_site.conf`, `docker-compose.image-stichter.yml`).
 - `server_data/` — Runtime data mounted by Docker Compose (`logs/`, `uploads/`, `config/`); contents are gitignored.
 - `Makefile` — Canonical dev workflow targets (see Development Workflow).
@@ -181,7 +181,7 @@ A `Makefile` defines the canonical workflow (`make help` lists targets):
     public, so GitHub Actions minutes are unlimited and free; CI is the
     safety net that makes "forgot to run e2e locally" a non-issue.
 - `make lint` — `uv run ruff check src` + `uv run mypy src` (mypy runs in `strict` mode; `alembic/` is excluded from both).
-- `make docker-build` / `docker-up` / `docker-down` / `docker-logs` — container workflow.
+- `make docker-up` / `docker-down` / `docker-logs` — dev container workflow (builds from the working tree, tags `vision-bill:latest`).
 - Operational scripts (values from `.env.scripts`; see `scripts/README.md`):
     - `make script-context-budget ARGS="..."` — measure Ollama prompt token usage.
     - `make script-create-benchmark ARGS="..."` — queue a benchmark run against the running API (admin account).
@@ -189,7 +189,6 @@ A `Makefile` defines the canonical workflow (`make help` lists targets):
 - Frontend (`frontend/`, Node via nvm; run `make fe-install` once after dependency changes):
     - `make fe-dev` — Vite dev server on :5173 (proxies `/api` → :8080).
     - `make fe-build` / `fe-sync` — build the SPA into `frontend/out` and copy it into `src/vision_bill/static`.
-    - `make fe-deploy` / `fe-docker` — sync the build (and optionally restart the Docker API).
     - `make fe-check` (svelte-check + eslint + prettier), `make fe-test` (Vitest), `make fe-test-e2e` (Playwright), `make fe-verify` (check + test + build).
 
 Additional notes:
@@ -208,7 +207,6 @@ Additional notes:
 - App container: `env_file: .env`; mounts `./server_data/logs` → `/app/logs`, `./server_data/uploads` → `/app/uploads`, `./server_data/config` → `/app/config`; uses `host.docker.internal:host-gateway` so it can reach Ollama on the host; host port `${API__PORT:-8080}:8080`.
 - The image entrypoint (`docker-entrypoint.sh`, a JSON-form `ENTRYPOINT` + `CMD`) runs `uv run alembic upgrade head` then `exec`s uvicorn as PID 1 for graceful shutdown.
 - `docker-compose.image-stichter.yml` + `image-sticher/`: optional nginx-served image-stitching frontend on port 8081.
-- `docs/deploy/truenas/`: full NAS (TrueNAS) deployment guide (compose files, env templates, systemd-style stack service, DB provisioning).
 
 ## Operational Notes & Constraints
 - **Local Inference by Default**: The default provider is Ollama (local). Ensure vision models (e.g. Llama-3-Vision, Moondream, Gemma) are pre-downloaded on the host.
