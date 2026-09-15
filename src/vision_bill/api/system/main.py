@@ -17,7 +17,7 @@ class LLMSettingsUpdate(BaseModel):
     provider: LLMProviderEnum
     host: str = Field(min_length=1)
     model_name: str = Field(min_length=1)
-    temperature: float
+    temperature: float = Field(ge=0, le=2)
 
 
 class SettingsUpdate(BaseModel):

@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 # A newer run for the same ref supersedes the queued one.
