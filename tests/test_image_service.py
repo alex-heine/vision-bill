@@ -144,3 +144,45 @@ def test_heif_opener_registered() -> None:
     assert "HEIF" in Image.OPEN
     assert ".heif" in Image.EXTENSION
     assert ".heic" in Image.EXTENSION
+
+
+def _write_image(path: Path, size: tuple[int, int], color: tuple[int, int, int]) -> Path:
+    Image.new("RGB", size, color).save(path, format="PNG")
+    return path
+
+
+def test_generate_thumbnail_creates_webp_in_thumbnails_dir(
+    image_service: ImageService, settings: Settings, tmp_path: Path
+) -> None:
+    src = _write_image(tmp_path / "photo.png", (1000, 800), (10, 20, 30))
+
+    result = image_service.generate_thumbnail(src)
+
+    assert result is not None
+    assert result == tmp_path / "thumbnails" / "photo.thumb.webp"
+    assert result.exists()
+    with Image.open(result) as im:
+        w, h = im.size
+    assert max(w, h) <= 512  # long edge capped
+    assert abs((w / h) - (1000 / 800)) < 0.02  # aspect ratio preserved
+
+
+def test_generate_thumbnail_never_upscales(image_service: ImageService, tmp_path: Path) -> None:
+    src = _write_image(tmp_path / "tiny.png", (10, 10), (255, 0, 0))
+
+    result = image_service.generate_thumbnail(src)
+
+    assert result is not None
+    with Image.open(result) as im:
+        w, h = im.size
+    assert max(w, h) <= 10  # small image is not enlarged to 512
+
+
+def test_generate_thumbnail_returns_none_on_corrupt(
+    image_service: ImageService, tmp_path: Path
+) -> None:
+    src = tmp_path / "bad.png"
+    src.write_bytes(b"this is not an image")
+
+    assert image_service.generate_thumbnail(src) is None
+    assert not (tmp_path / "thumbnails" / "bad.thumb.webp").exists()

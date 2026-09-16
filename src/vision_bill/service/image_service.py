@@ -6,6 +6,7 @@ from uuid import UUID
 
 import magic
 import pillow_heif
+from PIL import Image, ImageOps
 
 from ..config import ImageSettings
 from ..model.image import ImageInfo
@@ -54,6 +55,8 @@ class ImageService:
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
         self._save_dir = Path(settings.save_dir)
         self._save_dir.mkdir(parents=True, exist_ok=True)
+        self._max_edge = settings.thumbnail_max_edge
+        self._quality = settings.thumbnail_quality
 
     def get_media_type(self, content: bytes) -> str:
         """
@@ -127,3 +130,30 @@ class ImageService:
         image_path.unlink()
         logger.info("Deleted image file %s", image_path)
         return True
+
+    @staticmethod
+    def _thumb_for(original: Path) -> Path:
+        """Deterministic thumbnail path: a `thumbnails/` subfolder next to the
+        original's directory, named <stem>.thumb.webp."""
+        return original.parent / "thumbnails" / f"{original.stem}.thumb.webp"
+
+    def generate_thumbnail(self, src_path: Path) -> Path | None:
+        """Create <dir>/thumbnails/<stem>.thumb.webp for src_path; return it, or
+        None on any failure.
+
+        Fails soft: a thumbnail problem must never break upload/verify/analysis.
+        Decodes by content (Pillow magic bytes), so the tmp file's .png name is fine.
+        """
+        try:
+            src = Image.open(src_path)
+            src.load()
+            img = ImageOps.exif_transpose(src)
+            img = img.convert("RGB")
+            img.thumbnail((self._max_edge, self._max_edge), Image.Resampling.LANCZOS)
+            dest = self._thumb_for(src_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            img.save(dest, format="WEBP", quality=self._quality)
+            return dest
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Thumbnail generation failed for %s: %s", src_path, exc)
+            return None
