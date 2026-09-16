@@ -1,9 +1,11 @@
 from collections.abc import Generator
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
+from PIL import Image
 
 from vision_bill.config import Settings
 from vision_bill.model.image import ImageInfo
@@ -128,3 +130,17 @@ def test_store_perm_image_missing_returns_none(
     result = image_service.store_perm_image(missing, RECEIPT_ID)
 
     assert result is None
+
+
+def test_heif_opener_registered() -> None:
+    """Importing image_service registers the pillow-heif opener; a real PNG opens."""
+    import vision_bill.service.image_service  # noqa: F401  (registers on import)
+
+    buf = BytesIO()
+    Image.new("RGB", (4, 4), "red").save(buf, format="PNG")
+    buf.seek(0)
+    assert Image.open(buf).size == (4, 4)
+    # register_heif_opener() registers 'HEIF' in Image.OPEN and extensions in Image.EXTENSION
+    assert "HEIF" in Image.OPEN
+    assert ".heif" in Image.EXTENSION
+    assert ".heic" in Image.EXTENSION

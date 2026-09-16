@@ -5,9 +5,12 @@ from pathlib import Path
 from uuid import UUID
 
 import magic
+import pillow_heif
 
 from ..config import ImageSettings
 from ..model.image import ImageInfo
+
+pillow_heif.register_heif_opener()  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 
