@@ -133,7 +133,8 @@
 		"deleteBody": "„{merchant}“ wird zusammen mit dem Bild gelöscht.",
 		"deleted": "Beleg gelöscht",
 		"deleteFailed": "Löschen fehlgeschlagen",
-		"deleteBlocked": "Dieser Beleg wird in einem Benchmark-Lauf verwendet und kann nicht gelöscht werden."
+		"deleteBlocked": "Dieser Beleg wird in einem Benchmark-Lauf verwendet und kann nicht gelöscht werden.",
+		"viewFullImage": "Volle Größe anzeigen"
 	},
 	"receipts": {
 		"searchPlaceholder": "Belege durchsuchen…",
