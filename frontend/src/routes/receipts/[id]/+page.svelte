@@ -154,7 +154,7 @@
 							imageId={data.receipt.image_id}
 							thumbnailPath={data.receipt.thumbnail_path ?? null}
 							alt={data.receipt.merchant_name || $t('receipts.unknownVendor')}
-							class="mx-auto block h-auto max-h-[calc(100svh-10rem)] max-w-full rounded-xl border border-outline-variant bg-surface-container object-contain lg:max-h-[calc(100vh-6rem)] lg:w-full"
+							class="mx-auto block h-auto max-w-full rounded-xl border border-outline-variant bg-surface-container object-contain lg:max-h-[calc(100vh-6rem)] lg:w-full"
 							clickable={false}
 						/>
 					</div>
