@@ -236,6 +236,30 @@ async def get_image_file(
     return FileResponse(path, media_type=image.media_type or "application/octet-stream")
 
 
+@router.get("/{image_id}/thumb")
+async def get_image_thumb(
+    image_id: UUID,
+    receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> FileResponse:
+    """Serve the stored thumbnail for an image (404 when there is none).
+
+    Dumb file server: returns the thumb or 404. It never falls back to the full
+    image — missing-thumb handling is the frontend's decision.
+    """
+    if not receipt_service.db_ready:
+        raise HTTPException(status_code=503, detail="Database not available")
+    image = await receipt_service.get_image_by_id(
+        image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
+    if image is None or not image.thumbnail_path:
+        raise HTTPException(status_code=404, detail="Image thumbnail not found")
+    path = Path(image.thumbnail_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image thumbnail not found")
+    return FileResponse(path, media_type="image/webp")
+
+
 @router.delete("/{image_id}")
 async def delete_image(
     image_id: UUID,

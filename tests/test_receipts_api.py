@@ -573,6 +573,53 @@ def test_get_image_file_not_found_when_file_missing(api_context: ApiContext) -> 
     assert response.json()["detail"] == "Image file not found"
 
 
+# ── Image thumbnail (GET /images/{id}/thumb) ──────────────────────────
+
+
+def test_get_image_thumb_streams_webp(api_context: ApiContext, tmp_path: Path) -> None:
+    ctx = api_context
+    thumb_file = tmp_path / "stored.thumb.webp"
+    thumb_file.write_bytes(b"thumb-bytes")
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_image_row(id=IMAGE_ID, status="analyzed", thumbnail_path=str(thumb_file))
+    )
+
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+
+    assert response.status_code == 200
+    assert response.content == b"thumb-bytes"
+    assert response.headers["content-type"] == "image/webp"
+
+
+def test_get_image_thumb_404_when_no_thumb(api_context: ApiContext) -> None:
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_image_row(id=IMAGE_ID, status="analyzed", thumbnail_path=None)
+    )
+
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Image thumbnail not found"
+
+
+def test_get_image_thumb_404_when_file_missing(api_context: ApiContext) -> None:
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_image_row(id=IMAGE_ID, thumbnail_path="/nonexistent/x.thumb.webp")
+    )
+
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Image thumbnail not found"
+
+
+def test_get_image_thumb_503_when_db_down(broken_context: ApiContext) -> None:
+    response = broken_context.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+    assert response.status_code == 503
+
+
 # ── Image delete (DELETE /images/{id}) ─────────────────────────────────
 
 
