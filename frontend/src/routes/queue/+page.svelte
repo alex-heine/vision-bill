@@ -8,6 +8,7 @@
 	import { snackbar } from '$lib/ui/snackbar.svelte';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
+	import ReceiptImage from '$lib/ui/ReceiptImage.svelte';
 	import type { ImageRow } from '$lib/types';
 
 	const list = createQuery(
@@ -122,19 +123,12 @@
 				<li
 					class="flex items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-low p-3"
 				>
-					{#if image.image_path}
-						<img
-							src={api.imageFileUrl(image.id)}
-							alt=""
-							class="size-14 shrink-0 rounded-lg object-cover"
-						/>
-					{:else}
-						<span
-							class="flex size-14 shrink-0 items-center justify-center rounded-lg bg-surface-container"
-						>
-							<Icon icon="receipts" />
-						</span>
-					{/if}
+					<ReceiptImage
+						imageId={image.id}
+						thumbnailPath={image.thumbnail_path ?? null}
+						alt=""
+						class="size-14 shrink-0 rounded-lg object-cover"
+					/>
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm font-medium">
 							{image.original_filename ?? `#${image.id}`}

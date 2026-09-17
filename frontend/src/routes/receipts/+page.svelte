@@ -8,9 +8,11 @@
 	import { queryClient } from '$lib/query/client';
 	import { formatMoney } from '$lib/ui/money';
 	import { formatRelativeTime } from '$lib/ui/time';
+	import { goto } from '$app/navigation';
 	import { snackbar } from '$lib/ui/snackbar.svelte';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
+	import ReceiptImage from '$lib/ui/ReceiptImage.svelte';
 	import type { ReceiptRow, ReceiptStatus } from '$lib/types';
 
 	type StatusFilter = '' | ReceiptStatus;
@@ -128,15 +130,24 @@
 		<ul class="mt-4 space-y-3">
 			{#each list.data as receipt (receipt.id)}
 				<li class="flex items-center gap-3">
-					<a
-						href={resolve(`/receipts/${receipt.id}`)}
-						class="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-low p-4 transition-colors hover:border-primary/50"
+					<div
+						class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-low p-4 transition-colors hover:border-primary/50"
+						role="link"
+						tabindex="0"
+						onclick={() => goto(resolve(`/receipts/${receipt.id}`))}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								goto(resolve(`/receipts/${receipt.id}`));
+							}
+						}}
 					>
-						<span
-							class="flex size-12 shrink-0 items-center justify-center rounded-lg bg-surface-container"
-						>
-							<Icon icon="receipts" />
-						</span>
+						<ReceiptImage
+							imageId={receipt.image_id}
+							thumbnailPath={receipt.thumbnail_path ?? null}
+							alt={receipt.merchant_name || $t('receipts.unknownVendor')}
+							class="size-12 shrink-0 rounded-lg object-cover"
+						/>
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm font-medium">
 								{receipt.merchant_name || $t('receipts.unknownVendor')}
@@ -159,7 +170,7 @@
 						>
 							{$t(receipt.status === 'verified' ? 'receipt.verified' : 'receipt.unverified')}
 						</span>
-					</a>
+					</div>
 					<button
 						type="button"
 						class="shrink-0 rounded-lg p-2 text-on-surface-variant hover:bg-error-container hover:text-on-error-container"
