@@ -194,6 +194,11 @@ export const api = {
 		return `${API_BASE}/images/${id}/file`;
 	},
 
+	/** URL for the small WebP thumbnail (not used via fetch). */
+	imageThumbUrl(id: string): string {
+		return `${API_BASE}/images/${id}/thumb`;
+	},
+
 	listReceipts(filters: ReceiptListFilters = {}): Promise<ReceiptRow[]> {
 		return request<ReceiptRow[]>(
 			`/receipts${toQueryString({

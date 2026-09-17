@@ -21,6 +21,7 @@ export interface ImageRow {
 	media_type: string | null;
 	size_bytes: number | null;
 	image_path: string | null;
+	thumbnail_path: string | null;
 	status: ImageStatus;
 	error: string | null;
 	receipt_id: string | null;
@@ -52,6 +53,7 @@ export interface ReceiptRow {
 	created_at: string | null;
 	status: ReceiptStatus;
 	image_id: string | null;
+	thumbnail_path: string | null;
 	verified: boolean;
 	user_id: string | null;
 }
