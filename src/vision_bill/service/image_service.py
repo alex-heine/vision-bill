@@ -98,14 +98,15 @@ class ImageService:
 
         return tmp_path
 
-    def store_perm_image(self, tmp_path: Path, receipt_id: UUID) -> Path | None:
-        """Move a tmp image to the permanent save dir under a stable name.
+    def store_perm_image(self, tmp_path: Path, receipt_id: UUID) -> tuple[Path | None, Path | None]:
+        """Move a tmp image (and its thumbnail) to permanent storage.
 
-        Returns the destination path, or None if the tmp file no longer exists.
+        The original goes to ``save_dir`` and its thumbnail to ``save_dir/thumbnails/``.
+        Returns ``(original_path, thumbnail_path)``; either is ``None`` when absent.
         """
         if not tmp_path.exists():
             logger.warning("Tmp image %s does not exist - nothing to store", tmp_path)
-            return None
+            return (None, None)
 
         destination = self._save_dir / f"receipt_{receipt_id}{tmp_path.suffix}"
         if destination.exists():
@@ -114,7 +115,14 @@ class ImageService:
             )
 
         shutil.move(str(tmp_path), str(destination))
-        return destination
+
+        thumb_src = self._thumb_for(tmp_path)
+        if thumb_src.exists():
+            thumb_dest = self._thumb_for(destination)
+            thumb_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(thumb_src), str(thumb_dest))
+            return (destination, thumb_dest)
+        return (destination, None)
 
     def delete_image(self, image_path: Path | None) -> bool:
         """Remove an image file from disk.
@@ -129,6 +137,10 @@ class ImageService:
             return False
         image_path.unlink()
         logger.info("Deleted image file %s", image_path)
+        thumb = self._thumb_for(image_path)
+        if thumb.exists():
+            thumb.unlink()
+            logger.info("Deleted thumbnail %s", thumb)
         return True
 
     @staticmethod

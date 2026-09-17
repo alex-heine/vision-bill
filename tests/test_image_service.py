@@ -111,25 +111,27 @@ def test_store_perm_image_moves_file(image_service: ImageService, settings: Sett
     tmp_path = image_service.store_tmp_image(content)
     save_dir = Path(settings.images.save_dir)
 
-    result = image_service.store_perm_image(tmp_path, RECEIPT_ID)
+    original, thumb = image_service.store_perm_image(tmp_path, RECEIPT_ID)
 
-    assert result is not None
-    assert result == save_dir / f"receipt_{RECEIPT_ID}.png"
-    assert result.exists()
+    assert original is not None
+    assert original == save_dir / f"receipt_{RECEIPT_ID}.png"
+    assert original.exists()
     assert not tmp_path.exists()
-    assert result.read_bytes() == content
+    assert original.read_bytes() == content
+    assert thumb is None  # fake (undecodable) content -> no thumbnail was made
 
 
 def test_store_perm_image_missing_returns_none(
     image_service: ImageService,
     settings: Settings,
 ) -> None:
-    """store_perm_image returns None when the tmp file no longer exists."""
+    """store_perm_image returns (None, None) when the tmp file no longer exists."""
     missing = Path(settings.images.tmp_dir) / "does_not_exist.png"
 
-    result = image_service.store_perm_image(missing, RECEIPT_ID)
+    original, thumb = image_service.store_perm_image(missing, RECEIPT_ID)
 
-    assert result is None
+    assert original is None
+    assert thumb is None
 
 
 def test_heif_opener_registered() -> None:
@@ -186,3 +188,36 @@ def test_generate_thumbnail_returns_none_on_corrupt(
 
     assert image_service.generate_thumbnail(src) is None
     assert not (tmp_path / "thumbnails" / "bad.thumb.webp").exists()
+
+
+def test_store_perm_image_moves_thumb(image_service: ImageService, settings: Settings) -> None:
+    """When a thumbnail exists, store_perm_image moves it to save_dir/thumbnails/."""
+    from PIL import Image as PILImage
+
+    tmp_src = Path(settings.images.tmp_dir) / "real.png"
+    PILImage.new("RGB", (80, 60), (0, 0, 255)).save(tmp_src, format="PNG")
+    image_service.generate_thumbnail(tmp_src)  # creates real.thumb.webp
+    save_dir = Path(settings.images.save_dir)
+
+    original, thumb = image_service.store_perm_image(tmp_src, RECEIPT_ID)
+
+    assert original == save_dir / f"receipt_{RECEIPT_ID}.png"
+    assert thumb == save_dir / "thumbnails" / f"receipt_{RECEIPT_ID}.thumb.webp"
+    assert original is not None and original.exists()
+    assert thumb is not None and thumb.exists()
+    assert not tmp_src.exists()
+    assert not (Path(settings.images.tmp_dir) / "thumbnails" / "real.thumb.webp").exists()
+
+
+def test_delete_image_removes_thumb(image_service: ImageService, tmp_path: Path) -> None:
+    """delete_image removes the thumbnail (in the thumbnails/ subfolder) when present."""
+    from PIL import Image as PILImage
+
+    src = tmp_path / "gone.png"
+    PILImage.new("RGB", (20, 20), (1, 1, 1)).save(src, format="PNG")
+    thumb = image_service.generate_thumbnail(src)
+    assert thumb is not None and thumb.exists()
+
+    assert image_service.delete_image(src) is True
+    assert not src.exists()
+    assert not thumb.exists()
