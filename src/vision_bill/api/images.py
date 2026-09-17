@@ -63,6 +63,7 @@ async def upload_image(
         ) from e
 
     tmp_path = image_service.store_tmp_image(content)
+    thumb_path = image_service.generate_thumbnail(tmp_path)
 
     if await receipt_service.check_connection():
         models = await receipt_service.get_available_models()
@@ -79,6 +80,7 @@ async def upload_image(
         status="pending",
         user_id=current_user.id,
         bypass_review=effective_bypass_review,
+        thumbnail_path=str(thumb_path) if thumb_path else None,
     )
 
     if not provider_available:
@@ -131,9 +133,11 @@ async def upload_image(
         )
         await receipt_service.mark_image_analyzed(image_row.id, row.id)
         try:
-            perm_path = image_service.store_perm_image(tmp_path, row.id)
+            perm_path, perm_thumb = image_service.store_perm_image(tmp_path, row.id)
             if perm_path is not None:
                 await receipt_service.update_image_path(image_row.id, str(perm_path))
+            if perm_thumb is not None:
+                await receipt_service.update_image_thumbnail_path(image_row.id, str(perm_thumb))
         except Exception:
             logger.exception(
                 "Failed to move bypass-reviewed image %s to permanent storage", image_row.id

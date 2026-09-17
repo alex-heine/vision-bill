@@ -1,6 +1,7 @@
 """Endpoint wiring tests: real FastAPI app + TestClient, mocked DB and provider."""
 
 import base64
+import shutil
 from collections.abc import Generator
 from datetime import UTC, datetime
 from datetime import date as Date
@@ -250,6 +251,7 @@ def test_upload_image_analyzes_and_returns_201(api_context: ApiContext, settings
 
     tmp_files = list(Path(settings.images.tmp_dir).glob("*.png"))
     assert len(tmp_files) == 1
+    assert len(list(Path(settings.images.tmp_dir).glob("thumbnails/*.thumb.webp"))) == 1
     ctx.provider.analyse_receipt_from_model.assert_awaited_once()
     llm_call = ctx.provider.analyse_receipt_from_model.call_args
     assert llm_call is not None
@@ -275,6 +277,21 @@ def test_upload_image_bypass_review_verifies_and_moves(
     )
     ctx.conn.execute = AsyncMock()
 
+    # store_perm_image now returns (original, thumbnail) tuple; mock moves the file
+    save_dir = Path(settings.images.save_dir)
+    perm_path = save_dir / f"receipt_{RECEIPT_ID}.png"
+    thumb_path = save_dir / "thumbnails" / f"receipt_{RECEIPT_ID}.thumb.webp"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    thumb_path.parent.mkdir(parents=True, exist_ok=True)
+    perm_path.write_bytes(JPEG_BYTES)
+    thumb_path.write_bytes(b"thumb-bytes")
+
+    def _mock_store_perm(src, rid):
+        shutil.move(str(src), str(perm_path))
+        return (perm_path, thumb_path)
+
+    ctx.client.app.state.image_service.store_perm_image = MagicMock(side_effect=_mock_store_perm)
+
     response = ctx.client.post(
         IMAGES_URL,
         params={"model_id": "test-model", "bypass_review": "true"},
@@ -299,6 +316,15 @@ def test_upload_image_bypass_review_verifies_and_moves(
     assert len(update_calls) == 1
     assert update_calls[0].args[1] == IMAGE_ID
     assert str(Path(settings.images.save_dir)) in update_calls[0].args[2]
+
+    thumb_calls = [
+        call
+        for call in ctx.conn.execute.call_args_list
+        if call.args and call.args[0] == image_db_module.UPDATE_IMAGE_THUMB_PATH_SQL
+    ]
+    assert len(thumb_calls) == 1
+    assert thumb_calls[0].args[1] == IMAGE_ID
+    assert str(Path(settings.images.save_dir)) in thumb_calls[0].args[2]
 
 
 def test_upload_image_uses_configured_bypass_review_default(

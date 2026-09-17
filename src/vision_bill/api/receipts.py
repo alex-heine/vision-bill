@@ -145,9 +145,11 @@ async def verify_receipt(
             row.image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
         )
         if image is not None and image.image_path:
-            new_path = image_service.store_perm_image(Path(image.image_path), receipt_id)
+            new_path, new_thumb = image_service.store_perm_image(Path(image.image_path), receipt_id)
             if new_path is not None:
                 await receipt_service.update_image_path(row.image_id, str(new_path))
+            if new_thumb is not None:
+                await receipt_service.update_image_thumbnail_path(row.image_id, str(new_thumb))
 
     verified = await receipt_service.verify_receipt(
         receipt_id, user_id=current_user.id, can_see_all=current_user.can_see_all

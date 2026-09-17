@@ -170,9 +170,11 @@ class AnalysisScheduler:
 
         if bypass and self._image_service is not None:
             try:
-                perm_path = self._image_service.store_perm_image(image_path, row.id)
+                perm_path, perm_thumb = self._image_service.store_perm_image(image_path, row.id)
                 if perm_path is not None:
                     await self._image_db.update_image_path(image.id, str(perm_path))
+                if perm_thumb is not None:
+                    await self._image_db.update_image_thumbnail_path(image.id, str(perm_thumb))
             except Exception:
                 logger.exception(
                     "Failed to move bypass-reviewed image %s to permanent storage", image.id
