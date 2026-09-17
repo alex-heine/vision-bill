@@ -12,8 +12,8 @@ from ...model.db.image import ImageRow
 
 INSERT_IMAGE_SQL = """
     INSERT INTO images
-        (original_filename, media_type, size_bytes, image_path, status, user_id, bypass_review)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+        (original_filename, media_type, size_bytes, image_path, thumbnail_path, status, user_id, bypass_review)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *
 """
 
@@ -53,6 +53,8 @@ MARK_FAILED_SQL = (
 )
 
 UPDATE_IMAGE_PATH_SQL = "UPDATE images SET image_path = $2 WHERE id = $1"
+
+UPDATE_IMAGE_THUMB_PATH_SQL = "UPDATE images SET thumbnail_path = $2 WHERE id = $1"
 
 DELETE_IMAGE_SQL = "DELETE FROM images WHERE id = $1"
 
@@ -127,6 +129,7 @@ class ImageDB:
         status: str = "pending",
         user_id: UUID | None = None,
         bypass_review: bool = False,
+        thumbnail_path: str | None = None,
     ) -> ImageRow:
         """Insert a new images row (default status ``pending``) and return it."""
         logger.info("Storing image row for %s (status=%s)", image_path, status)
@@ -137,6 +140,7 @@ class ImageDB:
                 media_type,
                 size_bytes,
                 image_path,
+                thumbnail_path,
                 status,
                 user_id,
                 bypass_review,
@@ -217,6 +221,11 @@ class ImageDB:
         """Update the on-disk path of an image (e.g. tmp -> permanent on verify)."""
         async with self.pool.acquire() as conn:
             await conn.execute(UPDATE_IMAGE_PATH_SQL, image_id, image_path)
+
+    async def update_image_thumbnail_path(self, image_id: UUID, thumbnail_path: str) -> None:
+        """Update the stored thumbnail path for an image row."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(UPDATE_IMAGE_THUMB_PATH_SQL, image_id, thumbnail_path)
 
     async def delete_image(self, image_id: UUID) -> None:
         """Delete an image row (the on-disk file is removed by the caller)."""

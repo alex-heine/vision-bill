@@ -783,6 +783,7 @@ async def test_store_image_delegates(delegation_context: DelegationContext) -> N
         status="pending",
         user_id=None,
         bypass_review=True,
+        thumbnail_path=None,
     )
     assert result is row
 

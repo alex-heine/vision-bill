@@ -17,6 +17,7 @@ class ImageRow(BaseModel):
     media_type: str | None = None
     size_bytes: int | None = None
     image_path: str | None = None
+    thumbnail_path: str | None = None
     status: str = "pending"
     error: str | None = None
     receipt_id: UUID | None = None
