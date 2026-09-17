@@ -858,7 +858,13 @@ def test_list_receipts_without_filters_keeps_base_sql(api_context: ApiContext) -
     fetch_call = ctx.conn.fetch.await_args
     assert fetch_call is not None
     sql = fetch_call.args[0]
-    assert sql == "SELECT * FROM receipts ORDER BY date DESC LIMIT $1 OFFSET $2"
+    # Base SQL now includes the thumbnail_path correlated subquery;
+    # no filter WHERE clause should be appended when no filters are given.
+    expected = (
+        "SELECT r.*, (SELECT i.thumbnail_path FROM images i WHERE i.id = r.image_id) "
+        "AS thumbnail_path FROM receipts r ORDER BY date DESC LIMIT $1 OFFSET $2"
+    )
+    assert sql == expected
     assert fetch_call.args[1] == 50
     assert fetch_call.args[2] == 0
 

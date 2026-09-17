@@ -26,6 +26,7 @@ class ReceiptRow(BaseModel):
     created_at: Date | None = None
     status: str = "unverified"
     image_id: UUID | None = None
+    thumbnail_path: str | None = None
     verified: bool = False
     user_id: UUID | None = None
 

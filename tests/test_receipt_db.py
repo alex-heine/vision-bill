@@ -17,10 +17,12 @@ from vision_bill.provider.db.receipt_db import (
     DELETE_LINE_ITEMS_SQL,
     DELETE_RECEIPT_SQL,
     DELETE_TAXES_SQL,
+    GET_RECEIPT_WITH_IMAGE_SQL,
     INSERT_LINE_ITEM_SQL,
     INSERT_TAG_SQL,
     INSERT_TAX_SQL,
     LIST_LINE_ITEMS_SQL,
+    LIST_RECEIPTS_BASE_SQL,
     LIST_TAGS_SQL,
     SEARCH_PRODUCTS_BASE_SQL,
     ReceiptDB,
@@ -722,3 +724,15 @@ async def test_persist_receipt_line_items_get_position(db: ReceiptDB) -> None:
 def test_list_line_items_sql_orders_by_position() -> None:
     """Line items must be fetched ordered by position, not by UUID."""
     assert "ORDER BY position" in LIST_LINE_ITEMS_SQL
+
+
+def test_detail_sql_exposes_thumbnail_path() -> None:
+    """Detail query must join images and select thumbnail_path."""
+    assert "i.thumbnail_path" in GET_RECEIPT_WITH_IMAGE_SQL
+    assert "LEFT JOIN images i ON i.id = r.image_id" in GET_RECEIPT_WITH_IMAGE_SQL
+
+
+def test_list_sql_exposes_thumbnail_path() -> None:
+    """List query must expose thumbnail_path via correlated subquery."""
+    assert "thumbnail_path" in LIST_RECEIPTS_BASE_SQL
+    assert "FROM receipts r" in LIST_RECEIPTS_BASE_SQL
