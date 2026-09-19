@@ -1,8 +1,25 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import ReceiptImage from './ReceiptImage.svelte';
 
 const id = '00000000-0000-0000-0000-000000000001';
+
+beforeEach(() => {
+	// Mock matchMedia so the mobile-view thumbnail check works in jsdom
+	Object.defineProperty(window, 'matchMedia', {
+		writable: true,
+		value: (query: string) => ({
+			matches: query.includes('max-width: 768px'),
+			media: query,
+			onchange: null,
+			addListener: () => {},
+			removeListener: () => {},
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			dispatchEvent: () => false
+		})
+	});
+});
 
 afterEach(cleanup);
 

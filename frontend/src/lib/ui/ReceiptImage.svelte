@@ -22,7 +22,9 @@
 	let thumbFailed = $state(false);
 
 	function showThumb(): boolean {
-		return imageId !== null && thumbnailPath !== null && !thumbFailed;
+		// Expecting tablet and desktop view to have enough bandwidth to load the proper image
+		let phoneView = window.matchMedia('(max-width: 768px)').matches;
+		return imageId !== null && thumbnailPath !== null && !thumbFailed && phoneView;
 	}
 
 	function fallback(): string | 'icon' {
