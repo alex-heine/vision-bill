@@ -207,9 +207,7 @@ async def test_get_receipt_with_details_scoped_to_owner(receipt_db: ReceiptDB) -
     receipt_db._pool = _make_pool(conn)
     conn.fetchrow = AsyncMock(return_value=None)
 
-    await receipt_db.get_receipt_with_details(
-        RESOURCE_ID, user_id=USER_A, can_see_all=False
-    )
+    await receipt_db.get_receipt_with_details(RESOURCE_ID, user_id=USER_A, can_see_all=False)
 
     call = conn.fetchrow.call_args
     assert call.args[0] == GET_RECEIPT_WITH_IMAGE_SQL + " AND r.user_id = $2"
@@ -275,9 +273,7 @@ async def test_update_receipt_scoped_to_owner(receipt_db: ReceiptDB) -> None:
     conn.fetchrow = AsyncMock(return_value=_receipt_row())
     conn.execute = AsyncMock()
 
-    await receipt_db.update_receipt(
-        RESOURCE_ID, _make_receipt(), user_id=USER_A, can_see_all=False
-    )
+    await receipt_db.update_receipt(RESOURCE_ID, _make_receipt(), user_id=USER_A, can_see_all=False)
 
     call = conn.fetchrow.call_args
     assert "AND user_id = $16 RETURNING *" in call.args[0]
@@ -342,8 +338,8 @@ async def test_store_image_records_owner(image_db: ImageDB) -> None:
     await image_db.store_image("/tmp/a.png", user_id=USER_A)
 
     call = conn.fetchrow.call_args
-    # user_id is the 6th bound value in INSERT_IMAGE_SQL ($6), before bypass_review.
-    assert call.args[6] == USER_A
+    # user_id is the 7th bound value in INSERT_IMAGE_SQL ($7), after thumbnail_path.
+    assert call.args[7] == USER_A
 
 
 @pytest.mark.asyncio

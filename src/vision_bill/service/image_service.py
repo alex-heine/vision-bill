@@ -5,9 +5,13 @@ from pathlib import Path
 from uuid import UUID
 
 import magic
+import pillow_heif
+from PIL import Image, ImageOps
 
 from ..config import ImageSettings
 from ..model.image import ImageInfo
+
+pillow_heif.register_heif_opener()  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,8 @@ class ImageService:
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
         self._save_dir = Path(settings.save_dir)
         self._save_dir.mkdir(parents=True, exist_ok=True)
+        self._max_edge = settings.thumbnail_max_edge
+        self._quality = settings.thumbnail_quality
 
     def get_media_type(self, content: bytes) -> str:
         """
@@ -92,14 +98,15 @@ class ImageService:
 
         return tmp_path
 
-    def store_perm_image(self, tmp_path: Path, receipt_id: UUID) -> Path | None:
-        """Move a tmp image to the permanent save dir under a stable name.
+    def store_perm_image(self, tmp_path: Path, receipt_id: UUID) -> tuple[Path | None, Path | None]:
+        """Move a tmp image (and its thumbnail) to permanent storage.
 
-        Returns the destination path, or None if the tmp file no longer exists.
+        The original goes to ``save_dir`` and its thumbnail to ``save_dir/thumbnails/``.
+        Returns ``(original_path, thumbnail_path)``; either is ``None`` when absent.
         """
         if not tmp_path.exists():
             logger.warning("Tmp image %s does not exist - nothing to store", tmp_path)
-            return None
+            return (None, None)
 
         destination = self._save_dir / f"receipt_{receipt_id}{tmp_path.suffix}"
         if destination.exists():
@@ -108,7 +115,14 @@ class ImageService:
             )
 
         shutil.move(str(tmp_path), str(destination))
-        return destination
+
+        thumb_src = self._thumb_for(tmp_path)
+        if thumb_src.exists():
+            thumb_dest = self._thumb_for(destination)
+            thumb_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(thumb_src), str(thumb_dest))
+            return (destination, thumb_dest)
+        return (destination, None)
 
     def delete_image(self, image_path: Path | None) -> bool:
         """Remove an image file from disk.
@@ -123,4 +137,35 @@ class ImageService:
             return False
         image_path.unlink()
         logger.info("Deleted image file %s", image_path)
+        thumb = self._thumb_for(image_path)
+        if thumb.exists():
+            thumb.unlink()
+            logger.info("Deleted thumbnail %s", thumb)
         return True
+
+    @staticmethod
+    def _thumb_for(original: Path) -> Path:
+        """Deterministic thumbnail path: a `thumbnails/` subfolder next to the
+        original's directory, named <stem>.thumb.webp."""
+        return original.parent / "thumbnails" / f"{original.stem}.thumb.webp"
+
+    def generate_thumbnail(self, src_path: Path) -> Path | None:
+        """Create <dir>/thumbnails/<stem>.thumb.webp for src_path; return it, or
+        None on any failure.
+
+        Fails soft: a thumbnail problem must never break upload/verify/analysis.
+        Decodes by content (Pillow magic bytes), so the tmp file's .png name is fine.
+        """
+        try:
+            src = Image.open(src_path)
+            src.load()
+            img = ImageOps.exif_transpose(src)
+            img = img.convert("RGB")
+            img.thumbnail((self._max_edge, self._max_edge), Image.Resampling.LANCZOS)
+            dest = self._thumb_for(src_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            img.save(dest, format="WEBP", quality=self._quality)
+            return dest
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Thumbnail generation failed for %s: %s", src_path, exc)
+            return None

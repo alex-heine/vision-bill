@@ -1,6 +1,7 @@
 """Endpoint wiring tests: real FastAPI app + TestClient, mocked DB and provider."""
 
 import base64
+import shutil
 from collections.abc import Generator
 from datetime import UTC, datetime
 from datetime import date as Date
@@ -250,6 +251,7 @@ def test_upload_image_analyzes_and_returns_201(api_context: ApiContext, settings
 
     tmp_files = list(Path(settings.images.tmp_dir).glob("*.png"))
     assert len(tmp_files) == 1
+    assert len(list(Path(settings.images.tmp_dir).glob("thumbnails/*.thumb.webp"))) == 1
     ctx.provider.analyse_receipt_from_model.assert_awaited_once()
     llm_call = ctx.provider.analyse_receipt_from_model.call_args
     assert llm_call is not None
@@ -275,6 +277,21 @@ def test_upload_image_bypass_review_verifies_and_moves(
     )
     ctx.conn.execute = AsyncMock()
 
+    # store_perm_image now returns (original, thumbnail) tuple; mock moves the file
+    save_dir = Path(settings.images.save_dir)
+    perm_path = save_dir / f"receipt_{RECEIPT_ID}.png"
+    thumb_path = save_dir / "thumbnails" / f"receipt_{RECEIPT_ID}.thumb.webp"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    thumb_path.parent.mkdir(parents=True, exist_ok=True)
+    perm_path.write_bytes(JPEG_BYTES)
+    thumb_path.write_bytes(b"thumb-bytes")
+
+    def _mock_store_perm(src, rid):
+        shutil.move(str(src), str(perm_path))
+        return (perm_path, thumb_path)
+
+    ctx.client.app.state.image_service.store_perm_image = MagicMock(side_effect=_mock_store_perm)
+
     response = ctx.client.post(
         IMAGES_URL,
         params={"model_id": "test-model", "bypass_review": "true"},
@@ -299,6 +316,15 @@ def test_upload_image_bypass_review_verifies_and_moves(
     assert len(update_calls) == 1
     assert update_calls[0].args[1] == IMAGE_ID
     assert str(Path(settings.images.save_dir)) in update_calls[0].args[2]
+
+    thumb_calls = [
+        call
+        for call in ctx.conn.execute.call_args_list
+        if call.args and call.args[0] == image_db_module.UPDATE_IMAGE_THUMB_PATH_SQL
+    ]
+    assert len(thumb_calls) == 1
+    assert thumb_calls[0].args[1] == IMAGE_ID
+    assert str(Path(settings.images.save_dir)) in thumb_calls[0].args[2]
 
 
 def test_upload_image_uses_configured_bypass_review_default(
@@ -545,6 +571,53 @@ def test_get_image_file_not_found_when_file_missing(api_context: ApiContext) -> 
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Image file not found"
+
+
+# ── Image thumbnail (GET /images/{id}/thumb) ──────────────────────────
+
+
+def test_get_image_thumb_streams_webp(api_context: ApiContext, tmp_path: Path) -> None:
+    ctx = api_context
+    thumb_file = tmp_path / "stored.thumb.webp"
+    thumb_file.write_bytes(b"thumb-bytes")
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_image_row(id=IMAGE_ID, status="analyzed", thumbnail_path=str(thumb_file))
+    )
+
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+
+    assert response.status_code == 200
+    assert response.content == b"thumb-bytes"
+    assert response.headers["content-type"] == "image/webp"
+
+
+def test_get_image_thumb_404_when_no_thumb(api_context: ApiContext) -> None:
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_image_row(id=IMAGE_ID, status="analyzed", thumbnail_path=None)
+    )
+
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Image thumbnail not found"
+
+
+def test_get_image_thumb_404_when_file_missing(api_context: ApiContext) -> None:
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(
+        return_value=_image_row(id=IMAGE_ID, thumbnail_path="/nonexistent/x.thumb.webp")
+    )
+
+    response = ctx.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Image thumbnail not found"
+
+
+def test_get_image_thumb_503_when_db_down(broken_context: ApiContext) -> None:
+    response = broken_context.client.get(f"{IMAGES_URL}/{IMAGE_ID}/thumb")
+    assert response.status_code == 503
 
 
 # ── Image delete (DELETE /images/{id}) ─────────────────────────────────
@@ -832,7 +905,13 @@ def test_list_receipts_without_filters_keeps_base_sql(api_context: ApiContext) -
     fetch_call = ctx.conn.fetch.await_args
     assert fetch_call is not None
     sql = fetch_call.args[0]
-    assert sql == "SELECT * FROM receipts ORDER BY date DESC LIMIT $1 OFFSET $2"
+    # Base SQL now includes the thumbnail_path correlated subquery;
+    # no filter WHERE clause should be appended when no filters are given.
+    expected = (
+        "SELECT r.*, (SELECT i.thumbnail_path FROM images i WHERE i.id = r.image_id) "
+        "AS thumbnail_path FROM receipts r ORDER BY date DESC LIMIT $1 OFFSET $2"
+    )
+    assert sql == expected
     assert fetch_call.args[1] == 50
     assert fetch_call.args[2] == 0
 

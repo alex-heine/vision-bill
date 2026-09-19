@@ -39,6 +39,34 @@ make script-create-benchmark ARGS="--model glm-ocr:latest --limit 10"
 make script-create-benchmark ARGS="--receipt-id 125b2a52-60ac-4e1f-b9bf-d223f15c8cd1"
 ```
 
+## Generate thumbnails for existing images
+
+Creates a WebP thumbnail (`images.thumbnail_path`) for any image that does not
+have one yet. Configure the database and image directories in `scripts/.env`
+(same directory as the script):
+
+```bash
+PG__HOST=localhost
+PG__PORT=5432
+PG__USER=vision_bill
+PG__PASSWORD=...
+PG__DB=vision_bill
+IMAGES__SAVE_DIR=/path/to/uploads
+IMAGES__TMP_DIR=/path/to/uploads_tmp
+```
+
+Run (directly, not via Make):
+
+```bash
+uv run python scripts/generate_thumbnails.py --dry-run   # preview
+uv run python scripts/generate_thumbnails.py             # do it
+uv run python scripts/generate_thumbnails.py --limit 20  # cap per run
+```
+
+It is idempotent: only rows with `thumbnail_path IS NULL` are touched, so
+re-running is safe. New uploads create their thumbnails automatically; this
+script is only for backfilling images that predate the feature.
+
 ## PostgreSQL roles
 
 Use three kinds of database identity in a deployed installation:

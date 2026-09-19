@@ -158,3 +158,9 @@ describe('api.getStatistics', () => {
 		expect(String(url)).toContain('/statistics?weeks=12&collection_id=coll-1');
 	});
 });
+
+describe('api image URL helpers', () => {
+	it('builds the image thumbnail URL', () => {
+		expect(api.imageThumbUrl('abc-123')).toBe('/api/v1/images/abc-123/thumb');
+	});
+});

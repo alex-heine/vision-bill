@@ -257,6 +257,7 @@ class ReceiptService:
         status: str = "pending",
         user_id: UUID | None = None,
         bypass_review: bool = False,
+        thumbnail_path: str | None = None,
     ) -> ImageRow:
         return await self._image_db.store_image(
             image_path=image_path,
@@ -266,6 +267,7 @@ class ReceiptService:
             status=status,
             user_id=user_id,
             bypass_review=bypass_review,
+            thumbnail_path=thumbnail_path,
         )
 
     async def claim_image_for_analysis(self, image_id: UUID) -> ImageRow | None:
@@ -302,6 +304,9 @@ class ReceiptService:
 
     async def update_image_path(self, image_id: UUID, image_path: str) -> None:
         await self._image_db.update_image_path(image_id, image_path)
+
+    async def update_image_thumbnail_path(self, image_id: UUID, thumbnail_path: str) -> None:
+        await self._image_db.update_image_thumbnail_path(image_id, thumbnail_path)
 
     async def delete_image_row(self, image_id: UUID) -> None:
         await self._image_db.delete_image(image_id)

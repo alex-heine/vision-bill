@@ -59,6 +59,8 @@ class ImageSettings(BaseModel):
     save_dir: str = "/app/uploads/"
     tmp_dir: str = "/app/uploads_tmp/"
     bypass_review_default: bool = False
+    thumbnail_max_edge: int = Field(default=512, ge=64)
+    thumbnail_quality: int = Field(default=80, ge=1, le=100)
 
 
 class WorkerSettings(BaseModel):

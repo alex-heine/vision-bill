@@ -27,6 +27,7 @@ function receipt(overrides: Partial<ReceiptRow>): ReceiptRow {
 		created_at: null,
 		status: 'verified',
 		image_id: null,
+		thumbnail_path: null,
 		verified: true,
 		user_id: null,
 		...overrides

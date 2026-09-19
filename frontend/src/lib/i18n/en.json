@@ -133,7 +133,8 @@
 		"deleteBody": "“{merchant}” will be deleted along with its image.",
 		"deleted": "Receipt deleted",
 		"deleteFailed": "Deleting failed",
-		"deleteBlocked": "This receipt is used in a benchmark run and can't be deleted."
+		"deleteBlocked": "This receipt is used in a benchmark run and can't be deleted.",
+		"viewFullImage": "View full size"
 	},
 	"receipts": {
 		"searchPlaceholder": "Search receipts…",

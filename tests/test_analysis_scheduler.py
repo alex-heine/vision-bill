@@ -90,6 +90,7 @@ def scheduler_context(settings: Settings) -> Generator[SchedulerContext, None, N
     image_db.mark_analyzed = AsyncMock()
     image_db.mark_failed = AsyncMock()
     image_db.update_image_path = AsyncMock()
+    image_db.update_image_thumbnail_path = AsyncMock()
     receipt_service.get_receipt_by_image_id = AsyncMock(return_value=None)
 
     image_service = MagicMock()
@@ -175,11 +176,10 @@ async def test_bypass_review_auto_verifies(
     image_file = tmp_path / "bypass.png"
     image_file.write_bytes(b"image-bytes")
     perm_file = tmp_path / "receipt_7.png"
-    scheduler._image_service.store_perm_image = MagicMock(return_value=perm_file)
+    thumb_file = tmp_path / "receipt_7.thumb.webp"
+    scheduler._image_service.store_perm_image = MagicMock(return_value=(perm_file, thumb_file))
     image_db.list_pending_images = AsyncMock(
-        return_value=[
-            _pending_image(IMAGE_ID, image_file, bypass_review=True, user_id=USER_ID)
-        ]
+        return_value=[_pending_image(IMAGE_ID, image_file, bypass_review=True, user_id=USER_ID)]
     )
     receipt = _make_receipt()
     receipt_service.analyse_receipt_from_path = AsyncMock(return_value=receipt)
@@ -199,6 +199,7 @@ async def test_bypass_review_auto_verifies(
     image_db.mark_analyzed.assert_awaited_once_with(IMAGE_ID, RECEIPT_ID)
     scheduler._image_service.store_perm_image.assert_called_once_with(image_file, RECEIPT_ID)
     image_db.update_image_path.assert_awaited_once_with(IMAGE_ID, str(perm_file))
+    image_db.update_image_thumbnail_path.assert_awaited_once_with(IMAGE_ID, str(thumb_file))
 
 
 @pytest.mark.asyncio

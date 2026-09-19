@@ -63,6 +63,7 @@ async def upload_image(
         ) from e
 
     tmp_path = image_service.store_tmp_image(content)
+    thumb_path = image_service.generate_thumbnail(tmp_path)
 
     if await receipt_service.check_connection():
         models = await receipt_service.get_available_models()
@@ -79,6 +80,7 @@ async def upload_image(
         status="pending",
         user_id=current_user.id,
         bypass_review=effective_bypass_review,
+        thumbnail_path=str(thumb_path) if thumb_path else None,
     )
 
     if not provider_available:
@@ -131,9 +133,11 @@ async def upload_image(
         )
         await receipt_service.mark_image_analyzed(image_row.id, row.id)
         try:
-            perm_path = image_service.store_perm_image(tmp_path, row.id)
+            perm_path, perm_thumb = image_service.store_perm_image(tmp_path, row.id)
             if perm_path is not None:
                 await receipt_service.update_image_path(image_row.id, str(perm_path))
+            if perm_thumb is not None:
+                await receipt_service.update_image_thumbnail_path(image_row.id, str(perm_thumb))
         except Exception:
             logger.exception(
                 "Failed to move bypass-reviewed image %s to permanent storage", image_row.id
@@ -230,6 +234,30 @@ async def get_image_file(
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Image file not found")
     return FileResponse(path, media_type=image.media_type or "application/octet-stream")
+
+
+@router.get("/{image_id}/thumb")
+async def get_image_thumb(
+    image_id: UUID,
+    receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> FileResponse:
+    """Serve the stored thumbnail for an image (404 when there is none).
+
+    Dumb file server: returns the thumb or 404. It never falls back to the full
+    image — missing-thumb handling is the frontend's decision.
+    """
+    if not receipt_service.db_ready:
+        raise HTTPException(status_code=503, detail="Database not available")
+    image = await receipt_service.get_image_by_id(
+        image_id, user_id=current_user.id, can_see_all=current_user.can_see_all
+    )
+    if image is None or not image.thumbnail_path:
+        raise HTTPException(status_code=404, detail="Image thumbnail not found")
+    path = Path(image.thumbnail_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image thumbnail not found")
+    return FileResponse(path, media_type="image/webp")
 
 
 @router.delete("/{image_id}")

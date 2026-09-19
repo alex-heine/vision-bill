@@ -18,6 +18,7 @@ from vision_bill.provider.db.image_db import (
     MARK_ANALYZED_SQL,
     MARK_FAILED_SQL,
     UPDATE_IMAGE_PATH_SQL,
+    UPDATE_IMAGE_THUMB_PATH_SQL,
     ImageDB,
 )
 
@@ -48,6 +49,7 @@ def _image_row(image_id: UUID = IMAGE_ID, **overrides: object) -> dict[str, Any]
         "media_type": "image/png",
         "size_bytes": 123,
         "image_path": "/tmp/a.png",
+        "thumbnail_path": None,
         "status": "pending",
         "error": None,
         "receipt_id": None,
@@ -161,6 +163,7 @@ async def test_store_image(db: ImageDB) -> None:
         status="pending",
         user_id=USER_ID,
         bypass_review=True,
+        thumbnail_path="/tmp/a.thumb.webp",
     )
 
     assert isinstance(result, ImageRow)
@@ -172,15 +175,16 @@ async def test_store_image(db: ImageDB) -> None:
     fetchrow_call = mock_conn.fetchrow.call_args
     assert fetchrow_call is not None
     assert fetchrow_call.args[0] == INSERT_IMAGE_SQL
-    # original_filename, media_type, size_bytes, image_path ($4), status ($5),
-    # user_id ($6), bypass_review ($7)
+    # original_filename, media_type, size_bytes, image_path ($4),
+    # thumbnail_path ($5), status ($6), user_id ($7), bypass_review ($8)
     assert fetchrow_call.args[1] == "a.png"
     assert fetchrow_call.args[2] == "image/png"
     assert fetchrow_call.args[3] == 123
     assert fetchrow_call.args[4] == "/tmp/a.png"
-    assert fetchrow_call.args[5] == "pending"
-    assert fetchrow_call.args[6] == USER_ID
-    assert fetchrow_call.args[7] is True
+    assert fetchrow_call.args[5] == "/tmp/a.thumb.webp"
+    assert fetchrow_call.args[6] == "pending"
+    assert fetchrow_call.args[7] == USER_ID
+    assert fetchrow_call.args[8] is True
 
 
 @pytest.mark.asyncio
@@ -289,3 +293,24 @@ async def test_delete_image(db: ImageDB) -> None:
 
     mock_conn.execute.assert_awaited_once_with(DELETE_IMAGE_SQL, IMAGE_ID)
     assert "DELETE FROM images" in DELETE_IMAGE_SQL
+
+
+@pytest.mark.asyncio
+async def test_update_image_thumbnail_path(db: ImageDB) -> None:
+    """update_image_thumbnail_path should bind (id, new path)."""
+    mock_conn = AsyncMock()
+    db._pool = _make_pool(mock_conn)
+    mock_conn.execute = AsyncMock()
+
+    await db.update_image_thumbnail_path(IMAGE_ID, "/save/receipt.thumb.webp")
+
+    mock_conn.execute.assert_awaited_once_with(
+        UPDATE_IMAGE_THUMB_PATH_SQL, IMAGE_ID, "/save/receipt.thumb.webp"
+    )
+    assert "thumbnail_path = $2" in UPDATE_IMAGE_THUMB_PATH_SQL
+
+
+def test_image_row_maps_thumbnail_path() -> None:
+    row = _image_row(thumbnail_path="/x/y.thumb.webp")
+    mapped = ImageRow(**row)
+    assert mapped.thumbnail_path == "/x/y.thumb.webp"

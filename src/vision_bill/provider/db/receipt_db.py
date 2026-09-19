@@ -109,12 +109,15 @@ GET_RECEIPT_BY_IMAGE_ID_SQL = (
 # Join the images table so the detail response can expose the resolved
 # image_path without a second round-trip.
 GET_RECEIPT_WITH_IMAGE_SQL = """
-    SELECT r.*, i.image_path
+    SELECT r.*, i.image_path, i.thumbnail_path
     FROM receipts r
     LEFT JOIN images i ON i.id = r.image_id
     WHERE r.id = $1
 """
-LIST_RECEIPTS_BASE_SQL = "SELECT * FROM receipts"
+LIST_RECEIPTS_BASE_SQL = (
+    "SELECT r.*, (SELECT i.thumbnail_path FROM images i WHERE i.id = r.image_id) "
+    "AS thumbnail_path FROM receipts r"
+)
 SEARCH_PRODUCTS_BASE_SQL = """
     SELECT
         li.receipt_id,

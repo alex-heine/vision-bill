@@ -10,6 +10,7 @@
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import ReceiptEditor from '$lib/ui/ReceiptEditor.svelte';
+	import ReceiptImage from '$lib/ui/ReceiptImage.svelte';
 	import type { ReceiptWrite } from '$lib/types';
 
 	let id = $derived(page.url.pathname.split('/').pop() ?? '');
@@ -149,11 +150,12 @@
 			{#if data.receipt.image_id !== null}
 				<aside class="mb-6 min-w-0 lg:mb-0">
 					<div class="min-w-0 lg:sticky lg:top-20">
-						<img
-							src={api.imageFileUrl(data.receipt.image_id)}
-							alt={data.receipt.merchant_name}
-							class="mx-auto block h-auto max-h-[calc(100svh-10rem)] max-w-full rounded-xl border border-outline-variant bg-surface-container object-contain lg:max-h-[calc(100vh-6rem)] lg:w-full"
-							onerror={(e) => ((e.currentTarget as HTMLImageElement).hidden = true)}
+						<ReceiptImage
+							imageId={data.receipt.image_id}
+							thumbnailPath={data.receipt.thumbnail_path ?? null}
+							alt={data.receipt.merchant_name || $t('receipts.unknownVendor')}
+							class="mx-auto block h-auto max-w-full rounded-xl border border-outline-variant bg-surface-container object-contain lg:max-h-[calc(100vh-6rem)] lg:w-full"
+							clickable={false}
 						/>
 					</div>
 				</aside>
