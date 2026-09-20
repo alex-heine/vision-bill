@@ -30,8 +30,13 @@ class TaggingService:
         return "OTHER"
 
     async def tag_receipt(self, receipt: Receipt) -> Receipt:
-        """Tag all line items in a receipt with GPC categories."""
+        """Tag all line items in a receipt with GPC categories.
+
+        Preserves existing tags and adds the GPC category tag if not already present.
+        """
         for item in receipt.line_items:
             tag = await self.tag_line_item(item.description)
-            item.tags = [tag]
+            # Preserve existing tags, add GPC tag if not already present
+            if tag not in item.tags:
+                item.tags.append(tag)
         return receipt
