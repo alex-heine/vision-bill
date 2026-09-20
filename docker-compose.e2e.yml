@@ -70,8 +70,6 @@ services:
       - e2e_uploads_tmp:/app/uploads_tmp
       # Pre-seeded config (llm.temperature); see e2e/config/config.yaml.
       - ./e2e/config:/app/config
-      # Use small test GPC dataset for fast E2E testing.
-      - ./tests/e2e/data/gpc_test_import.sql:/app/src/vision_bill/data/gpc_import.sql:ro
     ports:
       - "53625:8080"
     healthcheck:
