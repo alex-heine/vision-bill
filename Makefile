@@ -92,7 +92,7 @@ NVM_DIR ?= $(HOME)/.nvm
 ifeq ($(wildcard $(NVM_DIR)/nvm.sh),)
 NODE :=
 else
-NODE := . "$(NVM_DIR)/nvm.sh" >/dev/null 2>&1 &&
+NODE := . "$(NVM_DIR)/nvm.sh" >/dev/null 2>&1 && nvm use default >/dev/null 2>&1 &&
 endif
 FE := frontend
 
