@@ -18,7 +18,10 @@ from ollama import AsyncClient
 
 
 def load_gpc_json(path: Path) -> dict:
-    """Load GPC JSON file."""
+    """Load GPC JSON file. Returns empty schema if file doesn't exist."""
+    if not path.exists():
+        print(f"WARNING: {path} not found, using empty schema")
+        return {"DateUtc": "unknown", "Schema": []}
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 

@@ -15,17 +15,18 @@ RUN npm run build
 
 # ── Stage 1.5: GPC import builder ─────────────────────────────────────────
 # Generates gpc_import.sql from gpclist.json at image-build time.
-# When Ollama is unavailable (typical for CI / build hosts), the script
-# falls back to deterministic placeholder embeddings so the SQL is still
-# produced.  Real embeddings can be regenerated later via the import script.
+# When gpclist.json is not present (typical for CI / bare clones), generates
+# a minimal SQL file with just the table schema and no data.
+# When Ollama is unavailable, the script falls back to deterministic
+# placeholder embeddings so the SQL is still produced.
 FROM python:3.12-slim AS gpc-builder
 WORKDIR /build
 COPY scripts/import_gpc.py .
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-ARG GPC_JSON_PATH=/tmp/gpc.json
-COPY gpclist.json /tmp/gpc.json
-RUN python import_gpc.py --input /tmp/gpc.json --output /build/gpc_import.sql
+# gpclist.json is optional; if not present, the script generates schema-only SQL
+COPY . /context
+RUN python import_gpc.py --input /context/gpclist.json --output /build/gpc_import.sql
 
 # ── Stage 2: Python API ────────────────────────────────────────────────────
 FROM python:3.12-slim
