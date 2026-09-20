@@ -11,7 +11,7 @@
 #   stub 9123
 services:
   pg:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     pull_policy: always
     environment:
       POSTGRES_DB: vision_bill
@@ -57,6 +57,7 @@ services:
       LLM__HOST: http://llm-stub:9123/v1
       LLM__API_KEY: e2e-test-key
       LLM__MODEL_NAME: e2e-vision
+      EMBEDDING__MOCK: "true"
       PG__HOST: pg
       PG__PORT: "5432"
       PG__DB: vision_bill
@@ -69,8 +70,16 @@ services:
       - e2e_uploads_tmp:/app/uploads_tmp
       # Pre-seeded config (llm.temperature); see e2e/config/config.yaml.
       - ./e2e/config:/app/config
+      # Use small test GPC dataset for fast E2E testing.
+      - ./tests/e2e/data/gpc_test_import.sql:/app/src/vision_bill/data/gpc_import.sql:ro
     ports:
       - "53625:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
 
 volumes:
   e2e_pgdata:

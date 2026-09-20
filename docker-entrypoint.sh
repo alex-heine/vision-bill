@@ -14,4 +14,15 @@ set -e
 
 uv run alembic upgrade head
 
+# Import/update GPC data if needed
+SQL_PATH=/app/src/vision_bill/data/gpc_import.sql
+if [ -f "$SQL_PATH" ]; then
+    if ! python -m vision_bill.gpc_check --db-url "$PG_DSN" --sql-path "$SQL_PATH"; then
+        echo "GPC data up to date"
+    else
+        echo "Importing GPC data..."
+        python -m vision_bill.gpc_import --db-url "$PG_DSN" --sql-path "$SQL_PATH"
+    fi
+fi
+
 exec "$@"

@@ -38,6 +38,17 @@ Since different LLMs perform differently at image extraction, the project includ
 - **Scoring:** Extracted data is compared against the verified values field by field; runs report per-model summaries (score, confidence, attempts, latency) and are durable across restarts.
 - **Customization:** Swap the provider, model, or temperature from the admin Settings page (or via `LLM__*` environment variables); `make script-context-budget` measures prompt token usage of a model.
 
+### 🌍 GPC Category Data
+
+This application uses the Global Product Classification (GPC) standard for
+product categorization. To build the Docker image with GPC data:
+
+1. Download the GPC JSON from [GPC Browser](https://gpc-browser.gs1.org/#FindOutMore)
+2. Save it as `gpclist.json` in the repository root
+3. Build the Docker image: `docker build -t vision-bill .`
+
+The GPC data is imported automatically on first service startup.
+
 ### 📦 Tech Stack
 - **Backend:** Python, FastAPI, Pydantic, PostgreSQL (Alembic migrations)
 - **Frontend:** SvelteKit SPA (TypeScript, Tailwind CSS)

@@ -670,14 +670,16 @@ async def test_verify_receipt_delegates(delegation_context: DelegationContext) -
 
 @pytest.mark.asyncio
 async def test_list_tags_delegates(delegation_context: DelegationContext) -> None:
-    """list_tags should return the DB vocabulary as-is."""
+    """list_tags should return all tags (GPC + user) with system flags."""
     service, mock_db, _ = delegation_context
-    mock_db.list_tags.return_value = ["coffee", "food"]
+    mock_db.list_all_tags = AsyncMock(
+        return_value=[{"name": "coffee", "system": True}, {"name": "food", "system": True}]
+    )
 
     result = await service.list_tags()
 
-    mock_db.list_tags.assert_awaited_once_with()
-    assert result == ["coffee", "food"]
+    mock_db.list_all_tags.assert_awaited_once_with()
+    assert result == [{"name": "coffee", "system": True}, {"name": "food", "system": True}]
 
 
 @pytest.mark.asyncio

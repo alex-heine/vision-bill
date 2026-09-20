@@ -24,7 +24,7 @@ services:
       - ./server_data/config:/app/config
 
   db:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     container_name: postgres
     pull_policy: always # re-pull latest 18.x tag whenever `docker compose up` runs
     restart: unless-stopped # auto-start on host/Docker reboot

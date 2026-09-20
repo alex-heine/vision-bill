@@ -21,6 +21,7 @@ from ..provider.db.receipt_db import ReceiptDB
 from ..provider.db.user_db import UserDB
 from ..provider.llm.base import LLMProvider, ModelInfo
 from .image_service import ImageService
+from .tagging_service import TaggingService
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,11 @@ class ReceiptService:
     """
 
     def __init__(
-        self, image_settings: ImageSettings, pg_settings: PGSettings, provider: LLMProvider
+        self,
+        image_settings: ImageSettings,
+        pg_settings: PGSettings,
+        provider: LLMProvider,
+        tagging_service: TaggingService | None = None,
     ):
         self._provider: LLMProvider = provider
         self._image_service = ImageService(image_settings)
@@ -51,6 +56,7 @@ class ReceiptService:
         self._image_db = ImageDB(pg_settings)
         self._user_db = UserDB(pg_settings)
         self._collection_db: CollectionDB | None = None
+        self._tagging_service = tagging_service
 
     # ── Database delegation ──────────────────────────────────────────
 
@@ -69,6 +75,11 @@ class ReceiptService:
         return self._db.pool
 
     @property
+    def receipt_db(self) -> ReceiptDB:
+        """The receipts-table provider, exposed for tagging and benchmark services."""
+        return self._db
+
+    @property
     def db_ready(self) -> bool:
         return self._db.is_ready
 
@@ -82,9 +93,9 @@ class ReceiptService:
         """The users-table provider, exposed for auth and ownership backfill."""
         return self._user_db
 
-    async def list_tags(self) -> list[str]:
-        """Return the allowed line-item tag vocabulary from the database."""
-        return await self._db.list_tags()
+    async def list_tags(self) -> list[dict[str, object]]:
+        """Return all tag vocabulary (GPC + user) with system flags."""
+        return await self._db.list_all_tags()
 
     async def create_tag(self, raw_name: str) -> tuple[str, bool]:
         """Normalize a tag name and make sure it exists in the tag vocabulary.
@@ -119,6 +130,10 @@ class ReceiptService:
         """Attach a CollectionDB so persisted receipts can be auto-captured
         into the caller's active collection (fail-safe)."""
         self._collection_db = collection_db
+
+    def set_tagging_service(self, tagging_service: TaggingService) -> None:
+        """Attach a TaggingService so analysed receipts get GPC category tags."""
+        self._tagging_service = tagging_service
 
     async def _capture_to_active(self, receipt_id: UUID, user_id: UUID | None) -> None:
         """Assign a freshly persisted receipt to the user's active collection.
@@ -334,10 +349,18 @@ class ReceiptService:
                 model_id, image_path, tags=tags
             )
             logger.info("Successfully analysed receipt with model: %s", model_id)
-            return result
         except Exception:
             logger.exception("Failed to analyse receipt with model %s", model_id)
             raise
+
+        # Tag with GPC categories
+        if self._tagging_service is not None:
+            try:
+                result = await self._tagging_service.tag_receipt(result)
+            except Exception:
+                logger.warning("GPC tagging failed - returning untagged receipt", exc_info=True)
+
+        return result
 
     async def analyse_receipt_from_model(self, model_id: str, image: bytes) -> Receipt:
         """Store the image temporarily, run extraction, then clean up the tmp file."""

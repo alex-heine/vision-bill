@@ -13,23 +13,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
+class TagInfo(BaseModel):
+    """A single tag in the vocabulary, with a system-flag."""
+
+    name: str = Field(min_length=1, max_length=100)
+    system: bool = False
+
+
 class TagCreate(BaseModel):
     """Body for creating (or confirming) a tag in the vocabulary."""
 
     name: str = Field(min_length=1, max_length=100)
 
 
-@router.get("")
+@router.get("", response_model=list[TagInfo])
 async def list_tags(
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
-) -> list[str]:
-    """Return the allowed line-item tag vocabulary, ordered by name.
-
-    This is the source of truth behind the tag <select> in the UI.
-    """
+) -> list[TagInfo]:
+    """Return tag vocabulary (GPC + user) with system flags."""
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
-    return await receipt_service.list_tags()
+    raw = await receipt_service.list_tags()
+    return [TagInfo.model_validate(t) for t in raw]
 
 
 @router.post("", response_model=None)

@@ -16,7 +16,8 @@
 		PaymentMethod,
 		ReceiptRow,
 		ReceiptWrite,
-		TaxLineRow
+		TaxLineRow,
+		TagInfo
 	} from '$lib/types';
 
 	const CATEGORIES: Category[] = [
@@ -154,7 +155,7 @@
 		() => ({ queryKey: queryKeys.tags(), queryFn: () => api.listTags() }),
 		() => queryClient
 	);
-	let tagOptions = $derived<string[]>(tagList.data ?? []);
+	let tagOptions = $derived<TagInfo[]>(tagList.data ?? []);
 
 	// Collection vocabulary for the multi-select, fetched once per editor mount.
 	const collections = createQuery(

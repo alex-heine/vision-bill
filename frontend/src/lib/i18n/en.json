@@ -298,6 +298,7 @@
 		"tagsCreate": "Create “{tag}”",
 		"tagsEmpty": "No tags yet — type to create one.",
 		"tagsSuggestedBadge": "Suggested",
+		"tagsSystemBadge": "System",
 		"tagsKeep": "Keep “{tag}” as standard tag",
 		"tagsRemove": "Remove “{tag}”",
 		"tagsCreateFailed": "Could not add the tag",

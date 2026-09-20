@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { buildTagRows, filterTags, moveActiveIndex, normalizeTag } from './tag-editor-logic';
 
-const OPTIONS = ['alcohol', 'beverage', 'coffee', 'food', 'fresh', 'household'];
+const OPTIONS = [
+	{ name: 'alcohol', system: true },
+	{ name: 'beverage', system: true },
+	{ name: 'coffee', system: true },
+	{ name: 'food', system: true },
+	{ name: 'fresh', system: true },
+	{ name: 'household', system: true }
+];
 
 describe('normalizeTag', () => {
 	it('trims, collapses whitespace, lowercases', () => {
@@ -17,8 +24,12 @@ describe('filterTags', () => {
 	});
 
 	it('matches case-insensitively on substrings', () => {
-		expect(filterTags(OPTIONS, 'F')).toEqual(['coffee', 'food', 'fresh']);
-		expect(filterTags(OPTIONS, 'ou')).toEqual(['household']);
+		expect(filterTags(OPTIONS, 'F')).toEqual([
+			{ name: 'coffee', system: true },
+			{ name: 'food', system: true },
+			{ name: 'fresh', system: true }
+		]);
+		expect(filterTags(OPTIONS, 'ou')).toEqual([{ name: 'household', system: true }]);
 	});
 
 	it('returns nothing when nothing matches', () => {
@@ -31,34 +42,34 @@ describe('buildTagRows', () => {
 		expect(buildTagRows([], '', [])).toEqual([{ kind: 'empty' }]);
 	});
 
-	it('lists all options with sequential optionIndex and selection state', () => {
+	it('lists all options with sequential optionIndex, selection state and system flag', () => {
 		expect(buildTagRows(OPTIONS, '', ['food'])).toEqual([
-			{ kind: 'tag', tag: 'alcohol', selected: false, optionIndex: 0 },
-			{ kind: 'tag', tag: 'beverage', selected: false, optionIndex: 1 },
-			{ kind: 'tag', tag: 'coffee', selected: false, optionIndex: 2 },
-			{ kind: 'tag', tag: 'food', selected: true, optionIndex: 3 },
-			{ kind: 'tag', tag: 'fresh', selected: false, optionIndex: 4 },
-			{ kind: 'tag', tag: 'household', selected: false, optionIndex: 5 }
+			{ kind: 'tag', tag: 'alcohol', system: true, selected: false, optionIndex: 0 },
+			{ kind: 'tag', tag: 'beverage', system: true, selected: false, optionIndex: 1 },
+			{ kind: 'tag', tag: 'coffee', system: true, selected: false, optionIndex: 2 },
+			{ kind: 'tag', tag: 'food', system: true, selected: true, optionIndex: 3 },
+			{ kind: 'tag', tag: 'fresh', system: true, selected: false, optionIndex: 4 },
+			{ kind: 'tag', tag: 'household', system: true, selected: false, optionIndex: 5 }
 		]);
 	});
 
 	it('filters by the query and keeps selection state (no create row while matches exist)', () => {
 		expect(buildTagRows(OPTIONS, 'f', ['food'])).toEqual([
-			{ kind: 'tag', tag: 'coffee', selected: false, optionIndex: 0 },
-			{ kind: 'tag', tag: 'food', selected: true, optionIndex: 1 },
-			{ kind: 'tag', tag: 'fresh', selected: false, optionIndex: 2 }
+			{ kind: 'tag', tag: 'coffee', system: true, selected: false, optionIndex: 0 },
+			{ kind: 'tag', tag: 'food', system: true, selected: true, optionIndex: 1 },
+			{ kind: 'tag', tag: 'fresh', system: true, selected: false, optionIndex: 2 }
 		]);
 	});
 
 	it('omits the create row while the query still matches options', () => {
 		expect(buildTagRows(OPTIONS, 'foo', [])).toEqual([
-			{ kind: 'tag', tag: 'food', selected: false, optionIndex: 0 }
+			{ kind: 'tag', tag: 'food', system: true, selected: false, optionIndex: 0 }
 		]);
 	});
 
 	it('omits the create row on exact match', () => {
 		expect(buildTagRows(OPTIONS, 'FOOD', [])).toEqual([
-			{ kind: 'tag', tag: 'food', selected: false, optionIndex: 0 }
+			{ kind: 'tag', tag: 'food', system: true, selected: false, optionIndex: 0 }
 		]);
 	});
 
@@ -66,6 +77,19 @@ describe('buildTagRows', () => {
 		expect(buildTagRows(OPTIONS, 'veggie', [])).toEqual([
 			{ kind: 'nomatch', query: 'veggie' },
 			{ kind: 'create', tag: 'veggie', optionIndex: 0 }
+		]);
+	});
+
+	it('preserves system flag for mixed GPC and user tags', () => {
+		const mixed = [
+			{ name: 'milk', system: true },
+			{ name: 'bread', system: true },
+			{ name: 'my-custom', system: false }
+		];
+		expect(buildTagRows(mixed, '', [])).toEqual([
+			{ kind: 'tag', tag: 'milk', system: true, selected: false, optionIndex: 0 },
+			{ kind: 'tag', tag: 'bread', system: true, selected: false, optionIndex: 1 },
+			{ kind: 'tag', tag: 'my-custom', system: false, selected: false, optionIndex: 2 }
 		]);
 	});
 });

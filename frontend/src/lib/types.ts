@@ -321,3 +321,9 @@ export interface CollectionUpdate {
 	start_date?: string | null;
 	end_date?: string | null;
 }
+
+/** A tag in the vocabulary, with a system-flag indicating GPC origin. */
+export interface TagInfo {
+	name: string;
+	system: boolean;
+}

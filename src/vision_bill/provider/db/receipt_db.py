@@ -194,11 +194,25 @@ LIST_TAXES_SQL = "SELECT * FROM taxes WHERE receipt_id = $1 ORDER BY id"
 LIST_COLLECTION_IDS_FOR_RECEIPT_SQL = (
     "SELECT collection_id FROM receipt_collections WHERE receipt_id = $1"
 )
-LIST_TAGS_SQL = "SELECT name FROM tags ORDER BY name"
+LIST_TAGS_SQL = "SELECT name FROM tags ORDER BY name LIMIT 500"
 INSERT_TAG_SQL = "INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING name"
 VERIFY_RECEIPT_SQL = (
     "UPDATE receipts SET status = 'verified', verified = TRUE WHERE id = $1 RETURNING *"
 )
+
+LIST_GPC_TAGS_SQL = """
+SELECT title FROM gpc_categories
+ORDER BY title
+LIMIT 500
+"""
+
+FIND_CLOSEST_GPC_SQL = """
+SELECT gpc_code, title, definition,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM gpc_categories
+ORDER BY embedding <=> $1::vector
+LIMIT 1
+"""
 
 
 logger = logging.getLogger(__name__)
@@ -748,6 +762,30 @@ class ReceiptDB:
             rows = await conn.fetch(LIST_TAGS_SQL)
         return [row["name"] for row in rows]
 
+    async def list_gpc_tags(self) -> list[str]:
+        """List GPC category titles for tag vocabulary."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(LIST_GPC_TAGS_SQL)
+        return [row["title"] for row in rows]
+
+    async def list_all_tags(self) -> list[dict[str, object]]:
+        """Return all tags (GPC + user) with a ``system`` flag.
+
+        GPC categories are marked ``system=True``; user-created tags have
+        ``system=False``.  Both are returned sorted by name.
+        """
+        async with self.pool.acquire() as conn:
+            gpc_rows = await conn.fetch(LIST_GPC_TAGS_SQL)
+            user_rows = await conn.fetch(LIST_TAGS_SQL)
+
+        tags: dict[str, dict[str, object]] = {}
+        for row in gpc_rows:
+            tags[row["title"]] = {"name": row["title"], "system": True}
+        for row in user_rows:
+            tags.setdefault(row["name"], {"name": row["name"], "system": False})
+
+        return sorted(tags.values(), key=lambda t: str(t["name"]).lower())[:500]
+
     async def create_tag(self, name: str) -> bool:
         """Insert a tag, returning True when it was newly created.
 
@@ -757,3 +795,21 @@ class ReceiptDB:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(INSERT_TAG_SQL, name)
         return row is not None
+
+    async def find_closest_gpc(self, embedding: list[float]) -> dict[str, Any] | None:
+        """Find the closest GPC category to the given embedding.
+
+        Uses pgvector's cosine distance (<=>) to find the nearest category.
+        Returns a dict with gpc_code, title, definition, and similarity score.
+        """
+        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(FIND_CLOSEST_GPC_SQL, embedding_str)
+        if row:
+            return {
+                "gpc_code": row["gpc_code"],
+                "title": row["title"],
+                "definition": row["definition"],
+                "similarity": float(row["similarity"]),
+            }
+        return None
