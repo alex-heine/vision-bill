@@ -66,8 +66,6 @@ services:
       IMAGES__SAVE_DIR: /app/uploads
       IMAGES__TMP_DIR: /app/uploads_tmp
     volumes:
-      - e2e_uploads:/app/uploads
-      - e2e_uploads_tmp:/app/uploads_tmp
       # Pre-seeded config (llm.temperature); see e2e/config/config.yaml.
       - ./e2e/config:/app/config
     ports:
@@ -81,5 +79,3 @@ services:
 
 volumes:
   e2e_pgdata:
-  e2e_uploads:
-  e2e_uploads_tmp:

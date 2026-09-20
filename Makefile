@@ -43,13 +43,22 @@ e2e-down: ## Stop the e2e stack and delete its volumes (manual)
 # always tear it down on exit (the EXIT trap covers failures and Ctrl-C).
 E2E_COMPOSE := docker compose -f docker-compose.e2e.yml
 test-e2e: ## Run backend e2e tests (starts the e2e stack, always tears it down)
-	@bash -c 'trap "$(E2E_COMPOSE) down -v" EXIT; \
+	@rm -f e2e/config/config.yaml
+	@git checkout -- e2e/config/config.yaml
+	@chmod 777 e2e/config
+	@chmod 666 e2e/config/config.yaml
+	@bash -c 'trap "$(E2E_COMPOSE) down -v; rm -f e2e/config/config.yaml; git checkout -- e2e/config/config.yaml" EXIT; \
 		$(E2E_COMPOSE) up -d --build && uv run python e2e/wait_ready.py && \
 		uv run --extra dev pytest tests/e2e/'
 
 fe-test-e2e: ## Playwright e2e (starts the e2e stack, always tears it down)
-	@bash -c 'trap "$(E2E_COMPOSE) down -v" EXIT; \
+	@rm -f e2e/config/config.yaml
+	@git checkout -- e2e/config/config.yaml
+	@chmod 777 e2e/config
+	@chmod 666 e2e/config/config.yaml
+	@bash -c 'trap "$(E2E_COMPOSE) down -v; rm -f e2e/config/config.yaml; git checkout -- e2e/config/config.yaml" EXIT; \
 		$(E2E_COMPOSE) up -d --build && uv run python e2e/wait_ready.py && \
+		docker exec -i vision-bill-pg-1 psql -U vision_bill -d vision_bill < tests/e2e/data/gpc_test_import.sql && \
 		$(NODE) (cd $(FE) && npm run test:e2e)'
 
 lint: ## Lint (ruff) and type-check (mypy)
