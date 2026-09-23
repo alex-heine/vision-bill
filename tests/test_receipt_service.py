@@ -300,6 +300,7 @@ def _make_receipt() -> Receipt:
         tax_total=Decimal("4.50"),
         total=Decimal("54.50"),
         payment_method="credit_card",
+        language="en",
     )
 
 
@@ -320,6 +321,7 @@ def _make_row(**overrides: object) -> ReceiptRow:
         "tip": None,
         "total": Decimal("54.50"),
         "payment_method": "credit_card",
+        "language": "en",
         "created_at": Date(2024, 1, 15),
         "status": "unverified",
         "image_id": None,
@@ -670,14 +672,16 @@ async def test_verify_receipt_delegates(delegation_context: DelegationContext) -
 
 @pytest.mark.asyncio
 async def test_list_tags_delegates(delegation_context: DelegationContext) -> None:
-    """list_tags should return the DB vocabulary as-is."""
+    """list_tags should return all tags (GPC + user) with system flags."""
     service, mock_db, _ = delegation_context
-    mock_db.list_tags.return_value = ["coffee", "food"]
+    mock_db.list_all_tags = AsyncMock(
+        return_value=[{"name": "coffee", "system": True}, {"name": "food", "system": True}]
+    )
 
     result = await service.list_tags()
 
-    mock_db.list_tags.assert_awaited_once_with()
-    assert result == ["coffee", "food"]
+    mock_db.list_all_tags.assert_awaited_once_with()
+    assert result == [{"name": "coffee", "system": True}, {"name": "food", "system": True}]
 
 
 @pytest.mark.asyncio

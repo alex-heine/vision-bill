@@ -15,4 +15,5 @@ def test_deposit_tag_is_in_vocabulary(http_factory) -> None:
     response = client.get(f"{API}/tags")
     assert response.status_code == 200, response.text
     tags = response.json()
-    assert "deposit" in tags
+    tag_names = [tag["name"] for tag in tags]
+    assert "deposit" in tag_names

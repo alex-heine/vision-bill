@@ -16,6 +16,7 @@ import type {
 	ReceiptWrite,
 	SettingsUpdate,
 	SettingsView,
+	TagInfo,
 	User,
 	UiConfig
 } from '$lib/types';
@@ -236,9 +237,9 @@ export const api = {
 		return request<void>(`/receipts/${id}`, { method: 'DELETE' });
 	},
 
-	/** GET /tags returns the line-item tag vocabulary (the select source). */
-	listTags(): Promise<string[]> {
-		return request<string[]>('/tags');
+	/** GET /tags returns the line-item tag vocabulary with system flags. */
+	listTags(): Promise<TagInfo[]> {
+		return request<TagInfo[]>('/tags');
 	},
 
 	/**

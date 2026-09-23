@@ -23,6 +23,8 @@ class LLMSettingsUpdate(BaseModel):
 class SettingsUpdate(BaseModel):
     llm: LLMSettingsUpdate
     allow_registration: bool
+    gpc_languages: list[str]
+    gpc_default_language: str
 
 
 class SettingsView(SettingsUpdate):
@@ -48,6 +50,8 @@ def _settings_view() -> SettingsView:
             temperature=settings.llm.temperature,
         ),
         allow_registration=settings.auth.allow_registration,
+        gpc_languages=settings.gpc.languages,
+        gpc_default_language=settings.gpc.default_language,
         sources=editable_setting_sources(),
         restart_required=runtime_restart_required(settings),
     )
@@ -69,6 +73,8 @@ async def update_settings(request: Request, update: SettingsUpdate) -> SettingsV
         "llm.model_name": update.llm.model_name,
         "llm.temperature": update.llm.temperature,
         "auth.allow_registration": update.allow_registration,
+        "gpc.languages": update.gpc_languages,
+        "gpc.default_language": update.gpc_default_language,
     }
     current = {
         "llm.provider": settings.llm.provider,
@@ -76,6 +82,8 @@ async def update_settings(request: Request, update: SettingsUpdate) -> SettingsV
         "llm.model_name": settings.llm.model_name,
         "llm.temperature": settings.llm.temperature,
         "auth.allow_registration": settings.auth.allow_registration,
+        "gpc.languages": settings.gpc.languages,
+        "gpc.default_language": settings.gpc.default_language,
     }
     locked_changes = [
         field
@@ -97,6 +105,8 @@ async def update_settings(request: Request, update: SettingsUpdate) -> SettingsV
     candidate.llm.model_name = update.llm.model_name
     candidate.llm.temperature = update.llm.temperature
     candidate.auth.allow_registration = update.allow_registration
+    candidate.gpc.languages = update.gpc_languages
+    candidate.gpc.default_language = update.gpc_default_language
     try:
         write_config_file(candidate)
     except OSError as exc:
@@ -107,6 +117,8 @@ async def update_settings(request: Request, update: SettingsUpdate) -> SettingsV
     settings.llm.model_name = candidate.llm.model_name
     settings.llm.temperature = candidate.llm.temperature
     settings.auth.allow_registration = candidate.auth.allow_registration
+    settings.gpc.languages = candidate.gpc.languages
+    settings.gpc.default_language = candidate.gpc.default_language
     provider = getattr(request.app.state, "llm_provider", None)
     if provider is not None:
         provider.update_runtime_settings(temperature=settings.llm.temperature)

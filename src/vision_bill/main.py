@@ -26,8 +26,10 @@ from .security.password import hash_password
 from .service.analysis_scheduler import AnalysisScheduler
 from .service.benchmark_service import BenchmarkService
 from .service.collection_service import CollectionService
+from .service.embedding_service import EmbeddingService
 from .service.image_service import ImageService
 from .service.receipt_service import ReceiptService
+from .service.tagging_service import TaggingService
 
 setup_logging()
 
@@ -65,12 +67,22 @@ async def bootstrap_admin(user_db: UserDB, settings: Settings) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     mark_startup_settings(settings)
+    logger.warning("Settings initialized: %s", settings)
     provider = get_llm_provider(settings.llm)
+
+    # Create embedding service for GPC category tagging
+    embedding_service = EmbeddingService(settings.llm.host)
+
     receipt_service = ReceiptService(settings.images, settings.pg, provider)
     try:
         await receipt_service.init_db()
     except Exception:
         logger.exception("Failed to initialise database - continuing without it")
+
+    # Wire up tagging service after DB is ready
+    if receipt_service.db_ready:
+        tagging_service = TaggingService(embedding_service, receipt_service.receipt_db)
+        receipt_service.set_tagging_service(tagging_service)
 
     if receipt_service.db_ready:
         try:
@@ -138,6 +150,12 @@ app.include_router(llm_router, prefix="/api/v1/llm", tags=["LLM"])
 # /api routes keep their own behaviour; a no-op while no build exists.
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+@app.get("/health", include_in_schema=False)
+async def health_check() -> dict[str, str]:
+    """Health check endpoint for container orchestration."""
+    return {"status": "ok"}
 
 
 def _register_spa_routes() -> None:

@@ -3,8 +3,12 @@
  * Kept free of Svelte so it can be unit-tested directly.
  */
 
+import type { TagInfo } from '$lib/types';
+
+export type TagOption = TagInfo;
+
 export type TagRow =
-	| { kind: 'tag'; tag: string; selected: boolean; optionIndex: number }
+	| { kind: 'tag'; tag: string; system: boolean; selected: boolean; optionIndex: number }
 	| { kind: 'create'; tag: string; optionIndex: number }
 	| { kind: 'nomatch'; query: string }
 	| { kind: 'empty' };
@@ -15,12 +19,12 @@ export function normalizeTag(input: string): string {
 }
 
 /** Case-insensitive substring filter; an empty query returns all options in order. */
-export function filterTags(options: string[], query: string): string[] {
+export function filterTags(options: TagOption[], query: string): TagOption[] {
 	const q = normalizeTag(query);
 	if (q === '') {
 		return [...options];
 	}
-	return options.filter((option) => option.toLowerCase().includes(q));
+	return options.filter((option) => option.name.toLowerCase().includes(q));
 }
 
 /**
@@ -32,17 +36,18 @@ export function filterTags(options: string[], query: string): string[] {
  *                                     create row (the only case where you can
  *                                     create a new tag)
  */
-export function buildTagRows(options: string[], query: string, selected: string[]): TagRow[] {
+export function buildTagRows(options: TagOption[], query: string, selected: string[]): TagRow[] {
 	if (options.length === 0) {
 		return [{ kind: 'empty' }];
 	}
 
 	const selectedSet = new Set(selected.map((tag) => tag.toLowerCase()));
 	const filtered = filterTags(options, query);
-	const rows: TagRow[] = filtered.map((tag, index) => ({
+	const rows: TagRow[] = filtered.map((opt, index) => ({
 		kind: 'tag',
-		tag,
-		selected: selectedSet.has(tag.toLowerCase()),
+		tag: opt.name,
+		system: opt.system,
+		selected: selectedSet.has(opt.name.toLowerCase()),
 		optionIndex: index
 	}));
 

@@ -69,6 +69,7 @@ def _receipt_row(
         "tip": None,
         "total": Decimal("54.50"),
         "payment_method": "credit_card",
+        "language": "en",
         "status": "unverified",
         "image_id": None,
         "created_at": datetime(2024, 1, 15, 14, 30, tzinfo=UTC),
@@ -140,6 +141,7 @@ def _make_receipt(merchant_name: str = "Test Store") -> Receipt:
         tax_total=Decimal("4.50"),
         total=Decimal("54.50"),
         payment_method="credit_card",
+        language="en",
     )
 
 
@@ -263,10 +265,12 @@ async def test_persist_receipt(db: ReceiptDB) -> None:
     assert bound_time == Time(14, 30)
     # category is the 8th bound parameter
     assert fetchrow_call.args[8] == "grocery"
+    # language is the 15th bound parameter
+    assert fetchrow_call.args[15] == "en"
     # status, verified, user_id and image_id are the last bound parameters
-    assert fetchrow_call.args[15] == "unverified"
-    assert fetchrow_call.args[16] is False
-    assert fetchrow_call.args[18] == IMAGE_ID
+    assert fetchrow_call.args[16] == "unverified"
+    assert fetchrow_call.args[17] is False
+    assert fetchrow_call.args[19] == IMAGE_ID
 
     assert mock_conn.fetchrow.call_count == 1
     # Deletes replace any previous children, followed by one insert each for
@@ -299,11 +303,11 @@ async def test_persist_receipt_binds_negative_line_item_prices(db: ReceiptDB) ->
     ]
     assert len(insert_calls) == 2
     pfand_call = insert_calls[1]
-    # $4 = unit_price and $5 = total_price arrive as negative floats, not clamped.
-    assert pfand_call.args[4] == -0.25
-    assert pfand_call.args[5] == -0.75
-    assert isinstance(pfand_call.args[4], float)
+    # $5 = unit_price and $6 = total_price arrive as negative floats, not clamped.
+    assert pfand_call.args[5] == -0.25
+    assert pfand_call.args[6] == -0.75
     assert isinstance(pfand_call.args[5], float)
+    assert isinstance(pfand_call.args[6], float)
 
 
 @pytest.mark.asyncio
@@ -717,8 +721,8 @@ async def test_persist_receipt_line_items_get_position(db: ReceiptDB) -> None:
     ]
     assert len(insert_calls) == 3
     for idx, call in enumerate(insert_calls):
-        # The 7th bound parameter ($7) is position (args[7] because args[0] is SQL).
-        assert call.args[7] == idx
+        # The 8th bound parameter ($8) is position (args[8] because args[0] is SQL).
+        assert call.args[8] == idx
 
 
 def test_list_line_items_sql_orders_by_position() -> None:

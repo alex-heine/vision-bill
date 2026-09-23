@@ -298,6 +298,7 @@
 		"tagsCreate": "„{tag}“ anlegen",
 		"tagsEmpty": "Noch keine Schlagwörter – tippe, um eines anzulegen.",
 		"tagsSuggestedBadge": "Vorschlag",
+		"tagsSystemBadge": "System",
 		"tagsKeep": "„{tag}“ als Standard übernehmen",
 		"tagsRemove": "„{tag}“ entfernen",
 		"tagsCreateFailed": "Schlagwort konnte nicht hinzugefügt werden",

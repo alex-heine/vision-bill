@@ -164,6 +164,16 @@ def _patch_app(
     monkeypatch.setattr(system_api_module, "settings", settings)
     monkeypatch.setattr(main_module, "get_llm_provider", lambda cfg: provider)
 
+    # Mock the embedding service to avoid real Ollama calls during tests
+    mock_embedding = MagicMock()
+    mock_embedding.embed_text = AsyncMock(return_value=[0.1, 0.2, 0.3])
+    monkeypatch.setattr(main_module, "EmbeddingService", lambda *args, **kwargs: mock_embedding)
+
+    # Mock the tagging service to return receipts unchanged
+    mock_tagging = MagicMock()
+    mock_tagging.tag_receipt = AsyncMock(side_effect=lambda r: r)
+    monkeypatch.setattr(main_module, "TaggingService", lambda *args, **kwargs: mock_tagging)
+
     fake_asyncpg = MagicMock()
     if db_down:
         fake_asyncpg.create_pool = AsyncMock(side_effect=RuntimeError("database unavailable"))
@@ -725,14 +735,27 @@ TAGS_URL = "/api/v1/tags"
 
 
 def test_list_tags_endpoint(api_context: ApiContext) -> None:
-    """GET /tags returns the vocabulary, ordered by name."""
+    """GET /tags returns all tags with system flags."""
     ctx = api_context
-    ctx.conn.fetch = AsyncMock(return_value=[{"name": "coffee"}, {"name": "food"}])
+    # list_all_tags runs two queries; mock both fetch calls.
+    ctx.conn.fetch = AsyncMock(
+        side_effect=[
+            [{"title": "coffee"}, {"title": "food"}],  # GPC tags
+            [{"name": "coffee"}],  # user tags (coffee already in GPC)
+        ]
+    )
 
     response = ctx.client.get(TAGS_URL)
 
     assert response.status_code == 200
-    assert response.json() == ["coffee", "food"]
+    data = response.json()
+    # coffee appears once (merged from GPC + user), food appears once (GPC only)
+    names = {item["name"] for item in data}
+    assert names == {"coffee", "food"}
+    coffee = next(item for item in data if item["name"] == "coffee")
+    assert coffee["system"] is True
+    food = next(item for item in data if item["name"] == "food")
+    assert food["system"] is True
 
 
 def test_create_tag_endpoint_new(api_context: ApiContext) -> None:

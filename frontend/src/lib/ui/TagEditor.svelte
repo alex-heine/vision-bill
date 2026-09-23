@@ -5,7 +5,13 @@
 	import { queryKeys } from '$lib/query/keys';
 	import { snackbar } from '$lib/ui/snackbar.svelte';
 	import Icon from './Icon.svelte';
-	import { buildTagRows, moveActiveIndex, normalizeTag, type TagRow } from './tag-editor-logic';
+	import {
+		buildTagRows,
+		moveActiveIndex,
+		normalizeTag,
+		type TagOption,
+		type TagRow
+	} from './tag-editor-logic';
 
 	let {
 		value,
@@ -15,7 +21,7 @@
 		/** The line item's tags (standard + suggested). Mutated in place. */
 		value: string[];
 		/** The tag vocabulary loaded from the database. */
-		tagOptions: string[];
+		tagOptions: TagOption[];
 		/** Unique prefix used to build stable input ids. */
 		id: string;
 	} = $props();
@@ -36,7 +42,12 @@
 
 	function isStandard(tag: string): boolean {
 		const lower = tag.toLowerCase();
-		return tagOptions.some((option) => option.toLowerCase() === lower);
+		return tagOptions.some((option) => option.name.toLowerCase() === lower);
+	}
+
+	function isSystemTag(tag: string): boolean {
+		const lower = tag.toLowerCase();
+		return tagOptions.some((option) => option.name.toLowerCase() === lower && option.system);
 	}
 
 	// `value` is mutated in place (ReceiptEditor relies on the stable array
@@ -248,6 +259,13 @@
 				<span
 					class="inline-flex items-center gap-1 rounded-full bg-primary-container py-1 pl-3 pr-1 text-sm font-medium text-on-primary-container"
 				>
+					{#if isSystemTag(tag)}
+						<span
+							class="rounded bg-primary/20 px-1 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-primary"
+						>
+							{$t('editor.tagsSystemBadge')}
+						</span>
+					{/if}
 					{tag}
 					<button
 						type="button"
@@ -338,7 +356,7 @@
 					/>
 				</div>
 				<ul id={listId} role="listbox" class="max-h-52 overflow-y-auto p-1">
-					{#each rows as row (row.kind === 'tag' ? `tag-${row.tag}` : row.kind === 'create' ? `create-${row.tag}` : row.kind === 'nomatch' ? `nomatch-${row.query}` : 'empty')}
+					{#each rows as row (row.kind === 'tag' ? `tag-${row.tag}-${row.system}` : row.kind === 'create' ? `create-${row.tag}` : row.kind === 'nomatch' ? `nomatch-${row.query}` : 'empty')}
 						{#if row.kind === 'tag'}
 							<li
 								id="{listId}-opt-{row.optionIndex}"
@@ -360,7 +378,16 @@
 									}
 								}}
 							>
-								<span>{row.tag}</span>
+								<span class="flex items-center gap-1.5">
+									{#if row.system}
+										<span
+											class="rounded bg-primary/20 px-1 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-primary"
+										>
+											{$t('editor.tagsSystemBadge')}
+										</span>
+									{/if}
+									<span>{row.tag}</span>
+								</span>
 								{#if row.selected}
 									<span class="text-primary"><Icon icon="check" /></span>
 								{/if}
@@ -404,3 +431,7 @@
 		{/if}
 	</div>
 </div>
+
+{#key tagOptions}
+	<!-- no-op block to force re-evaluation when tagOptions changes -->
+{/key}

@@ -23,6 +23,7 @@ class ReceiptRow(BaseModel):
     tip: Decimal | None = None
     total: Decimal
     payment_method: str = "unknown"
+    language: str = "en"
     created_at: Date | None = None
     status: str = "unverified"
     image_id: UUID | None = None
@@ -37,6 +38,7 @@ class LineItemRow(BaseModel):
     id: UUID
     receipt_id: UUID
     description: str
+    english_description: str | None = None
     quantity: float
     unit_price: Decimal
     total_price: Decimal

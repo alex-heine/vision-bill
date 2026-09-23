@@ -11,6 +11,8 @@
 !pyproject.toml
 !uv.lock
 !alembic.ini
+!requirements.txt
+!gpclist.json
 
 # Source trees
 !alembic/
@@ -19,6 +21,10 @@
 !src/**
 !frontend
 !frontend/**
+
+# Scripts needed at build time (GPC import)
+!scripts/
+!scripts/**
 
 # Frontend build artifacts are compiled inside the image; never ship host copies.
 frontend/node_modules

@@ -276,7 +276,7 @@ async def test_update_receipt_scoped_to_owner(receipt_db: ReceiptDB) -> None:
     await receipt_db.update_receipt(RESOURCE_ID, _make_receipt(), user_id=USER_A, can_see_all=False)
 
     call = conn.fetchrow.call_args
-    assert "AND user_id = $16 RETURNING *" in call.args[0]
+    assert "AND user_id = $17 RETURNING *" in call.args[0]
     assert call.args[-1] == USER_A
 
 

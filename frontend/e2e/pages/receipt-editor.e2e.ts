@@ -239,10 +239,9 @@ test.describe('receipt editor', () => {
 		await page.locator('#tax-1-amount').fill('0.10');
 
 		// FIX #2: Fixture b has 1 line item + 1 pre-existing tax (VAT).
-		// After "Add tax" the Remove buttons in DOM order are:
-		//   [li-0 Remove, tax-0(VAT) Remove, tax-1(Service) Remove]
-		// nth(1) targets VAT (tax-0); nth(2) targets the new tax (tax-1).
-		await page.getByRole('button', { name: 'Remove' }).nth(2).click();
+		// Target the Remove button within the Service tax row specifically.
+		const serviceTaxRow = page.locator('#tax-1-name').locator('..').locator('..');
+		await serviceTaxRow.locator('button[aria-label="Remove"]').click();
 		await expect(page.locator('#tax-1-name')).toHaveCount(0);
 
 		await page.getByRole('button', { name: 'Save', exact: true }).click();

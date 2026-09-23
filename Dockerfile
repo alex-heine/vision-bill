@@ -13,6 +13,21 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
+# ── Stage 1.5: GPC import builder ─────────────────────────────────────────
+# Generates gpc_import.sql from gpclist.json at image-build time.
+# When gpclist.json is not present (typical for CI / bare clones), generates
+# a minimal SQL file with just the table schema and no data.
+# When Ollama is unavailable, the script falls back to deterministic
+# placeholder embeddings so the SQL is still produced.
+FROM python:3.12-slim AS gpc-builder
+WORKDIR /build
+COPY scripts/import_gpc.py .
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+# gpclist.json is optional; if not present, the script generates schema-only SQL
+COPY . /context
+RUN python import_gpc.py --input /context/gpclist.json --output /build/gpc_import.sql
+
 # ── Stage 2: Python API ────────────────────────────────────────────────────
 FROM python:3.12-slim
 
@@ -33,10 +48,13 @@ COPY ./src ./src
 COPY alembic.ini ./
 COPY ./alembic ./alembic
 
+# Bake GPC import SQL generated in the builder stage
+COPY --from=gpc-builder /build/gpc_import.sql ./src/vision_bill/data/gpc_import.sql
+
 # Bake the built SPA into the package's static dir (served by FastAPI at /).
 COPY --from=frontend /build/frontend/out/. ./src/vision_bill/static/
 
-RUN apt update && apt install -y --no-install-recommends libmagic1 && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y --no-install-recommends libmagic1 postgresql-client && rm -rf /var/lib/apt/lists/*
 
 # Install the project itself (editable, matches the lockfile)
 RUN uv sync --frozen

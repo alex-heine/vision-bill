@@ -31,9 +31,9 @@ INSERT_RECEIPT_SQL = """
     INSERT INTO receipts
         (confidence, merchant_name, merchant_address, receipt_number, date, time,
          currency, category, subtotal, discount_total, tax_total, tip, total,
-         payment_method, status, image_id, verified, user_id)
+         payment_method, language, status, image_id, verified, user_id)
     VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
     RETURNING *
 """
 
@@ -53,12 +53,13 @@ UPDATE_RECEIPT_BY_IMAGE_SQL = """
         tip = $12,
         total = $13,
         payment_method = $14,
-        status = $15,
-        verified = $16,
-        user_id = $17
+        language = $15,
+        status = $16,
+        verified = $17,
+        user_id = $18
     WHERE id = (
         SELECT id FROM receipts
-        WHERE image_id = $18
+        WHERE image_id = $19
         ORDER BY created_at ASC, id ASC
         LIMIT 1
     )
@@ -80,8 +81,9 @@ UPDATE_RECEIPT_SQL = """
         tax_total       = $11,
         tip             = $12,
         total           = $13,
-        payment_method  = $14
-    WHERE id = $15
+        payment_method  = $14,
+        language        = $15
+    WHERE id = $16
     RETURNING *
 """
 
@@ -91,9 +93,9 @@ DELETE_RECEIPT_SQL = "DELETE FROM receipts WHERE id = $1 RETURNING *"
 
 INSERT_LINE_ITEM_SQL = """
     INSERT INTO line_items
-        (receipt_id, description, quantity, unit_price,
+        (receipt_id, description, english_description, quantity, unit_price,
          total_price, tags, position)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 """
 
 INSERT_TAX_SQL = """
@@ -194,11 +196,36 @@ LIST_TAXES_SQL = "SELECT * FROM taxes WHERE receipt_id = $1 ORDER BY id"
 LIST_COLLECTION_IDS_FOR_RECEIPT_SQL = (
     "SELECT collection_id FROM receipt_collections WHERE receipt_id = $1"
 )
-LIST_TAGS_SQL = "SELECT name FROM tags ORDER BY name"
+LIST_TAGS_SQL = "SELECT name FROM tags ORDER BY name LIMIT 500"
 INSERT_TAG_SQL = "INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING name"
 VERIFY_RECEIPT_SQL = (
     "UPDATE receipts SET status = 'verified', verified = TRUE WHERE id = $1 RETURNING *"
 )
+
+LIST_GPC_TAGS_SQL = """
+SELECT title FROM gpc_categories
+ORDER BY title
+LIMIT 500
+"""
+
+FIND_CLOSEST_GPC_SQL = """
+SELECT gpc_code, title, definition, language_code,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM gpc_categories
+WHERE language_code = $2
+ORDER BY embedding <=> $1::vector
+LIMIT 1
+"""
+
+FIND_CLOSEST_GPC_SUGGESTIONS_SQL = """
+SELECT gpc_code, title, definition, language_code,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM gpc_categories
+WHERE language_code = $2
+  AND 1 - (embedding <=> $1::vector) > $3
+ORDER BY embedding <=> $1::vector
+LIMIT $4
+"""
 
 
 logger = logging.getLogger(__name__)
@@ -277,6 +304,7 @@ class ReceiptDB:
             id=d["id"],
             receipt_id=d["receipt_id"],
             description=d["description"],
+            english_description=d.get("english_description"),
             quantity=float(d["quantity"]),
             unit_price=Decimal(d["unit_price"]),
             total_price=Decimal(d["total_price"]),
@@ -320,6 +348,7 @@ class ReceiptDB:
                     INSERT_LINE_ITEM_SQL,
                     receipt_id,
                     item.description,
+                    item.english_description,
                     float(item.quantity),
                     float(item.unit_price),
                     float(item.total_price),
@@ -374,6 +403,7 @@ class ReceiptDB:
             float(receipt.tip) if receipt.tip is not None else None,
             float(receipt.total),
             receipt.payment_method,
+            receipt.language,
         )
 
         async with self.pool.acquire() as conn:
@@ -427,6 +457,7 @@ class ReceiptDB:
             float(receipt.tip) if receipt.tip is not None else None,
             float(receipt.total),
             receipt.payment_method,
+            receipt.language,
             receipt_id,
         ]
         sql = UPDATE_RECEIPT_SQL
@@ -748,6 +779,30 @@ class ReceiptDB:
             rows = await conn.fetch(LIST_TAGS_SQL)
         return [row["name"] for row in rows]
 
+    async def list_gpc_tags(self) -> list[str]:
+        """List GPC category titles for tag vocabulary."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(LIST_GPC_TAGS_SQL)
+        return [row["title"] for row in rows]
+
+    async def list_all_tags(self) -> list[dict[str, object]]:
+        """Return all tags (GPC + user) with a ``system`` flag.
+
+        GPC categories are marked ``system=True``; user-created tags have
+        ``system=False``.  Both are returned sorted by name.
+        """
+        async with self.pool.acquire() as conn:
+            gpc_rows = await conn.fetch(LIST_GPC_TAGS_SQL)
+            user_rows = await conn.fetch(LIST_TAGS_SQL)
+
+        tags: dict[str, dict[str, object]] = {}
+        for row in gpc_rows:
+            tags[row["title"]] = {"name": row["title"], "system": True}
+        for row in user_rows:
+            tags.setdefault(row["name"], {"name": row["name"], "system": False})
+
+        return sorted(tags.values(), key=lambda t: str(t["name"]).lower())[:500]
+
     async def create_tag(self, name: str) -> bool:
         """Insert a tag, returning True when it was newly created.
 
@@ -757,3 +812,54 @@ class ReceiptDB:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(INSERT_TAG_SQL, name)
         return row is not None
+
+    async def find_closest_gpc(
+        self, embedding: list[float], language_code: str = "en"
+    ) -> dict[str, Any] | None:
+        """Find the closest GPC category to the given embedding.
+
+        Uses pgvector's cosine distance (<=>) to find the nearest category.
+        Returns a dict with gpc_code, title, definition, language_code, and
+        similarity score.
+        """
+        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(FIND_CLOSEST_GPC_SQL, embedding_str, language_code)
+        if row:
+            return {
+                "gpc_code": row["gpc_code"],
+                "title": row["title"],
+                "definition": row["definition"],
+                "language_code": row["language_code"],
+                "similarity": float(row["similarity"]),
+            }
+        return None
+
+    async def find_gpc_suggestions(
+        self,
+        embedding: list[float],
+        language_code: str = "en",
+        threshold: float = 0.55,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Find multiple GPC category suggestions above a similarity threshold.
+
+        Returns a list of dicts with gpc_code, title, definition, language_code,
+        and similarity score. Only returns categories with similarity above the
+        threshold.
+        """
+        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                FIND_CLOSEST_GPC_SUGGESTIONS_SQL, embedding_str, language_code, threshold, limit
+            )
+        return [
+            {
+                "gpc_code": row["gpc_code"],
+                "title": row["title"],
+                "definition": row["definition"],
+                "language_code": row["language_code"],
+                "similarity": float(row["similarity"]),
+            }
+            for row in rows
+        ]

@@ -26,6 +26,8 @@ EDITABLE_ENV_KEYS = {
     "llm.model_name": "LLM__MODEL_NAME",
     "llm.temperature": "LLM__TEMPERATURE",
     "auth.allow_registration": "AUTH__ALLOW_REGISTRATION",
+    "gpc.languages": "GPC__LANGUAGES",
+    "gpc.default_language": "GPC__DEFAULT_LANGUAGE",
 }
 
 _startup_llm_identity: tuple[LLMProviderEnum, str] | None = None
@@ -67,6 +69,17 @@ class WorkerSettings(BaseModel):
     """Background analysis worker tuning."""
 
     check_interval_seconds: int = Field(default=300, ge=1)
+
+
+class GPCSettings(BaseModel):
+    """GPC (General Product Classification) language configuration.
+
+    The first configured language is the main/fallback language.
+    Sysadmins can configure which languages are imported.
+    """
+
+    languages: list[str] = Field(default=["en"], description="Imported GPC languages")
+    default_language: str = Field(default="en", description="Fallback language for GPC lookups")
 
 
 class PGSettings(BaseModel):
@@ -128,6 +141,7 @@ class Settings(BaseSettings):
     pg: PGSettings
     worker: WorkerSettings = WorkerSettings()
     auth: AuthSettings
+    gpc: GPCSettings = GPCSettings()
 
     @classmethod
     def settings_customise_sources(

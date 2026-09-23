@@ -14,6 +14,7 @@ tests/e2e/data/*
 !tests/e2e/data/README.md
 !tests/e2e/data/seed_receipt.png
 !tests/e2e/data/seed_receipt.json
+!tests/e2e/data/gpc_test_import.sql
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -246,3 +247,10 @@ frontend/.svelte-kit/
 # Built SPA installed into the package via `make fe-build`
 src/vision_bill/static/*
 !src/vision_bill/static/.gitkeep
+
+# GPC source data (large JSON, regenerated per-release)
+gpclist.json
+gpclist-*.json
+
+# Generated GPC import SQL (large, built at Docker build time)
+src/vision_bill/data/gpc_import*.sql

@@ -2,7 +2,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TagEditor from './TagEditor.svelte';
 
-const OPTIONS = ['alcohol', 'beverage', 'coffee', 'food', 'fresh', 'household'];
+const OPTIONS = [
+	{ name: 'alcohol', system: true },
+	{ name: 'beverage', system: true },
+	{ name: 'coffee', system: true },
+	{ name: 'food', system: true },
+	{ name: 'fresh', system: true },
+	{ name: 'household', system: true }
+];
 
 function jsonResponse(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
@@ -28,7 +35,7 @@ function setupFetch() {
 	return fetchMock;
 }
 
-function mount(value: string[], tagOptions: string[] = OPTIONS) {
+function mount(value: string[], tagOptions = OPTIONS) {
 	return render(TagEditor, { value, tagOptions, id: 'li-0' });
 }
 
@@ -59,22 +66,34 @@ describe('TagEditor', () => {
 		expect(screen.queryByText('alcohol')).toBeNull();
 	});
 
+	it('renders system badge on GPC tags in the dropdown', async () => {
+		mount([]);
+		expect(screen.queryByRole('listbox')).toBeNull();
+		await openDropdown();
+		// All default options are system=true, so the badge should appear.
+		const systemBadges = screen.getAllByText('System');
+		expect(systemBadges.length).toBeGreaterThanOrEqual(1);
+	});
+
 	it('opens the dropdown on click and lists every option', async () => {
 		mount([]);
 		expect(screen.queryByRole('listbox')).toBeNull();
 		await openDropdown();
 		for (const option of OPTIONS) {
-			expect(screen.getByRole('option', { name: option })).not.toBeNull();
+			const name = option.system ? `System ${option.name}` : option.name;
+			expect(screen.getByRole('option', { name })).not.toBeNull();
 		}
 	});
 
 	it('marks selected options with aria-selected', async () => {
 		mount(['food']);
 		await openDropdown();
-		expect(screen.getByRole('option', { name: 'food' }).getAttribute('aria-selected')).toBe('true');
-		expect(screen.getByRole('option', { name: 'beverage' }).getAttribute('aria-selected')).toBe(
-			'false'
+		expect(screen.getByRole('option', { name: 'System food' }).getAttribute('aria-selected')).toBe(
+			'true'
 		);
+		expect(
+			screen.getByRole('option', { name: 'System beverage' }).getAttribute('aria-selected')
+		).toBe('false');
 	});
 
 	it('filters options while typing in the search field', async () => {
@@ -82,19 +101,19 @@ describe('TagEditor', () => {
 		await openDropdown();
 		const search = screen.getByPlaceholderText('Search tags…');
 		await fireEvent.input(search, { target: { value: 'f' } });
-		expect(screen.getByRole('option', { name: 'food' })).not.toBeNull();
-		expect(screen.getByRole('option', { name: 'fresh' })).not.toBeNull();
-		expect(screen.queryByRole('option', { name: 'beverage' })).toBeNull();
+		expect(screen.getByRole('option', { name: 'System food' })).not.toBeNull();
+		expect(screen.getByRole('option', { name: 'System fresh' })).not.toBeNull();
+		expect(screen.queryByRole('option', { name: 'System beverage' })).toBeNull();
 	});
 
 	it('toggles tags when options are clicked and keeps the dropdown open', async () => {
 		const value = ['food'];
 		mount(value);
 		await openDropdown();
-		await fireEvent.click(screen.getByRole('option', { name: 'beverage' }));
+		await fireEvent.click(screen.getByRole('option', { name: 'System beverage' }));
 		expect(value).toEqual(['food', 'beverage']);
 		expect(screen.getByRole('listbox')).not.toBeNull();
-		await fireEvent.click(screen.getByRole('option', { name: 'food' }));
+		await fireEvent.click(screen.getByRole('option', { name: 'System food' }));
 		expect(value).toEqual(['beverage']);
 	});
 
@@ -105,8 +124,8 @@ describe('TagEditor', () => {
 		await openDropdown();
 		const search = screen.getByPlaceholderText('Search tags…');
 		await fireEvent.input(search, { target: { value: 'veggie' } });
-		expect(screen.getByText('No tags match “veggie”.')).not.toBeNull();
-		await fireEvent.click(screen.getByRole('option', { name: 'Create “veggie”' }));
+		expect(screen.getByText(/No tags match/)).not.toBeNull();
+		await fireEvent.click(screen.getByRole('option', { name: /Create/ }));
 		await waitFor(() =>
 			expect(fetchMock).toHaveBeenCalledWith(
 				expect.stringContaining('/tags'),
@@ -125,7 +144,7 @@ describe('TagEditor', () => {
 		const search = screen.getByPlaceholderText('Search tags…');
 		await fireEvent.input(search, { target: { value: 'FOOD' } });
 		expect(screen.queryByRole('option', { name: /Create/ })).toBeNull();
-		expect(screen.getByRole('option', { name: 'food' })).not.toBeNull();
+		expect(screen.getByRole('option', { name: 'System food' })).not.toBeNull();
 	});
 
 	it('removes the last chip with Backspace on an empty search', async () => {
@@ -169,7 +188,7 @@ describe('TagEditor', () => {
 		const value = ['custom-tag'];
 		mount(value);
 		await fireEvent.click(
-			screen.getByRole('button', { name: 'Keep “custom-tag” as standard tag' })
+			screen.getByRole('button', { name: /Keep .custom-tag. as standard tag/ })
 		);
 		await waitFor(() =>
 			expect(fetchMock).toHaveBeenCalledWith(
@@ -177,7 +196,7 @@ describe('TagEditor', () => {
 				expect.objectContaining({ method: 'POST' })
 			)
 		);
-		const removeButton = screen.getByRole('button', { name: 'Remove “custom-tag”' });
+		const removeButton = screen.getByRole('button', { name: /Remove .custom-tag./ });
 		await fireEvent.click(removeButton);
 		expect(value).toEqual([]);
 	});
