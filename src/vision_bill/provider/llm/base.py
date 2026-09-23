@@ -92,6 +92,9 @@ class LLMProvider(ABC):
     Do not guess or infer the company name from a logo, photo, or design; if no printed name exists,
     use the best available written hint.
     {tag_instruction}
+    Detect the language of the receipt and set the top-level "language" field to the
+    ISO 639-1 language code (e.g., "en" for English, "de" for German, "fr" for French).
+    Do not translate any descriptions; keep them in the original language.
     Set the top-level category to the single best category for the whole purchase.
     Use a negative unit_price and total_price for any line item that returns money to the customer
     (a refund, a credit, or a deposit/Pfand that is given back).

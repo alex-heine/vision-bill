@@ -33,6 +33,8 @@ services:
       POSTGRES_PASSWORD: ${PG__PASSWORD}
       POSTGRES_DB: ${PG__DB}
       PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432" # for local dev only; not used in production
     networks:
       - postgres_net
     # No `ports:` section on purpose - nothing is published to the NAS host.

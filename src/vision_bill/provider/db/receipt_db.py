@@ -31,9 +31,9 @@ INSERT_RECEIPT_SQL = """
     INSERT INTO receipts
         (confidence, merchant_name, merchant_address, receipt_number, date, time,
          currency, category, subtotal, discount_total, tax_total, tip, total,
-         payment_method, status, image_id, verified, user_id)
+         payment_method, language, status, image_id, verified, user_id)
     VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
     RETURNING *
 """
 
@@ -53,12 +53,13 @@ UPDATE_RECEIPT_BY_IMAGE_SQL = """
         tip = $12,
         total = $13,
         payment_method = $14,
-        status = $15,
-        verified = $16,
-        user_id = $17
+        language = $15,
+        status = $16,
+        verified = $17,
+        user_id = $18
     WHERE id = (
         SELECT id FROM receipts
-        WHERE image_id = $18
+        WHERE image_id = $19
         ORDER BY created_at ASC, id ASC
         LIMIT 1
     )
@@ -80,8 +81,9 @@ UPDATE_RECEIPT_SQL = """
         tax_total       = $11,
         tip             = $12,
         total           = $13,
-        payment_method  = $14
-    WHERE id = $15
+        payment_method  = $14,
+        language        = $15
+    WHERE id = $16
     RETURNING *
 """
 
@@ -91,9 +93,9 @@ DELETE_RECEIPT_SQL = "DELETE FROM receipts WHERE id = $1 RETURNING *"
 
 INSERT_LINE_ITEM_SQL = """
     INSERT INTO line_items
-        (receipt_id, description, quantity, unit_price,
+        (receipt_id, description, english_description, quantity, unit_price,
          total_price, tags, position)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 """
 
 INSERT_TAX_SQL = """
@@ -207,11 +209,22 @@ LIMIT 500
 """
 
 FIND_CLOSEST_GPC_SQL = """
-SELECT gpc_code, title, definition,
+SELECT gpc_code, title, definition, language_code,
        1 - (embedding <=> $1::vector) AS similarity
 FROM gpc_categories
+WHERE language_code = $2
 ORDER BY embedding <=> $1::vector
 LIMIT 1
+"""
+
+FIND_CLOSEST_GPC_SUGGESTIONS_SQL = """
+SELECT gpc_code, title, definition, language_code,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM gpc_categories
+WHERE language_code = $2
+  AND 1 - (embedding <=> $1::vector) > $3
+ORDER BY embedding <=> $1::vector
+LIMIT $4
 """
 
 
@@ -291,6 +304,7 @@ class ReceiptDB:
             id=d["id"],
             receipt_id=d["receipt_id"],
             description=d["description"],
+            english_description=d.get("english_description"),
             quantity=float(d["quantity"]),
             unit_price=Decimal(d["unit_price"]),
             total_price=Decimal(d["total_price"]),
@@ -334,6 +348,7 @@ class ReceiptDB:
                     INSERT_LINE_ITEM_SQL,
                     receipt_id,
                     item.description,
+                    item.english_description,
                     float(item.quantity),
                     float(item.unit_price),
                     float(item.total_price),
@@ -388,6 +403,7 @@ class ReceiptDB:
             float(receipt.tip) if receipt.tip is not None else None,
             float(receipt.total),
             receipt.payment_method,
+            receipt.language,
         )
 
         async with self.pool.acquire() as conn:
@@ -441,6 +457,7 @@ class ReceiptDB:
             float(receipt.tip) if receipt.tip is not None else None,
             float(receipt.total),
             receipt.payment_method,
+            receipt.language,
             receipt_id,
         ]
         sql = UPDATE_RECEIPT_SQL
@@ -796,20 +813,53 @@ class ReceiptDB:
             row = await conn.fetchrow(INSERT_TAG_SQL, name)
         return row is not None
 
-    async def find_closest_gpc(self, embedding: list[float]) -> dict[str, Any] | None:
+    async def find_closest_gpc(
+        self, embedding: list[float], language_code: str = "en"
+    ) -> dict[str, Any] | None:
         """Find the closest GPC category to the given embedding.
 
         Uses pgvector's cosine distance (<=>) to find the nearest category.
-        Returns a dict with gpc_code, title, definition, and similarity score.
+        Returns a dict with gpc_code, title, definition, language_code, and
+        similarity score.
         """
         embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(FIND_CLOSEST_GPC_SQL, embedding_str)
+            row = await conn.fetchrow(FIND_CLOSEST_GPC_SQL, embedding_str, language_code)
         if row:
             return {
                 "gpc_code": row["gpc_code"],
                 "title": row["title"],
                 "definition": row["definition"],
+                "language_code": row["language_code"],
                 "similarity": float(row["similarity"]),
             }
         return None
+
+    async def find_gpc_suggestions(
+        self,
+        embedding: list[float],
+        language_code: str = "en",
+        threshold: float = 0.55,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Find multiple GPC category suggestions above a similarity threshold.
+
+        Returns a list of dicts with gpc_code, title, definition, language_code,
+        and similarity score. Only returns categories with similarity above the
+        threshold.
+        """
+        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                FIND_CLOSEST_GPC_SUGGESTIONS_SQL, embedding_str, language_code, threshold, limit
+            )
+        return [
+            {
+                "gpc_code": row["gpc_code"],
+                "title": row["title"],
+                "definition": row["definition"],
+                "language_code": row["language_code"],
+                "similarity": float(row["similarity"]),
+            }
+            for row in rows
+        ]

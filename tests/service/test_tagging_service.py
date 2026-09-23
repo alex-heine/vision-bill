@@ -13,40 +13,47 @@ async def test_tag_line_item_returns_gpc_category():
     mock_embedding_service.embed_text = AsyncMock(return_value=[0.1] * 768)
 
     mock_db = Mock()
-    mock_db.find_closest_gpc = AsyncMock(
-        return_value={
-            "gpc_code": 30001234,
-            "title": "MILK",
-            "definition": "Dairy milk products",
-            "similarity": 0.85,
-        }
+    mock_db.find_gpc_suggestions = AsyncMock(
+        return_value=[
+            {
+                "gpc_code": 30001234,
+                "title": "MILK",
+                "definition": "Dairy milk products",
+                "similarity": 0.85,
+            }
+        ]
     )
 
     service = TaggingService(mock_embedding_service, mock_db)
-    tag = await service.tag_line_item("organic whole milk 1L")
+    item = LineItem(
+        description="organic whole milk 1L",
+        quantity=1,
+        unit_price=Decimal("1.50"),
+        total_price=Decimal("1.50"),
+    )
+    tag = await service.tag_line_item(item, language="en")
     assert tag == "MILK"
     mock_embedding_service.embed_text.assert_called_once_with("organic whole milk 1L")
-    mock_db.find_closest_gpc.assert_called_once()
+    mock_db.find_gpc_suggestions.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_tag_line_item_returns_other_below_threshold():
-    """When similarity is below threshold, return 'OTHER'."""
+    """When no GPC match is found (empty suggestions), return 'OTHER'."""
     mock_embedding_service = Mock()
     mock_embedding_service.embed_text = AsyncMock(return_value=[0.1] * 768)
 
     mock_db = Mock()
-    mock_db.find_closest_gpc = AsyncMock(
-        return_value={
-            "gpc_code": 30001234,
-            "title": "MILK",
-            "definition": "Dairy milk products",
-            "similarity": 0.5,
-        }
-    )
+    mock_db.find_gpc_suggestions = AsyncMock(return_value=[])
 
     service = TaggingService(mock_embedding_service, mock_db)
-    tag = await service.tag_line_item("mystery item")
+    item = LineItem(
+        description="mystery item",
+        quantity=1,
+        unit_price=Decimal("1.00"),
+        total_price=Decimal("1.00"),
+    )
+    tag = await service.tag_line_item(item, language="en")
     assert tag == "OTHER"
 
 
@@ -57,10 +64,16 @@ async def test_tag_line_item_returns_other_when_no_match():
     mock_embedding_service.embed_text = AsyncMock(return_value=[0.1] * 768)
 
     mock_db = Mock()
-    mock_db.find_closest_gpc = AsyncMock(return_value=None)
+    mock_db.find_gpc_suggestions = AsyncMock(return_value=[])
 
     service = TaggingService(mock_embedding_service, mock_db)
-    tag = await service.tag_line_item("mystery item")
+    item = LineItem(
+        description="mystery item",
+        quantity=1,
+        unit_price=Decimal("1.00"),
+        total_price=Decimal("1.00"),
+    )
+    tag = await service.tag_line_item(item, language="en")
     assert tag == "OTHER"
 
 
@@ -71,13 +84,15 @@ async def test_tag_receipt_tags_all_items():
     mock_embedding_service.embed_text = AsyncMock(return_value=[0.1] * 768)
 
     mock_db = Mock()
-    mock_db.find_closest_gpc = AsyncMock(
-        return_value={
-            "gpc_code": 30001234,
-            "title": "MILK",
-            "definition": "Dairy milk products",
-            "similarity": 0.85,
-        }
+    mock_db.find_gpc_suggestions = AsyncMock(
+        return_value=[
+            {
+                "gpc_code": 30001234,
+                "title": "MILK",
+                "definition": "Dairy milk products",
+                "similarity": 0.85,
+            }
+        ]
     )
 
     service = TaggingService(mock_embedding_service, mock_db)
@@ -103,6 +118,7 @@ async def test_tag_receipt_tags_all_items():
         ],
         subtotal=Decimal("3.50"),
         total=Decimal("3.50"),
+        language="en",
     )
 
     tagged = await service.tag_receipt(receipt)

@@ -67,6 +67,7 @@ async def bootstrap_admin(user_db: UserDB, settings: Settings) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     mark_startup_settings(settings)
+    logger.warning("Settings initialized: %s", settings)
     provider = get_llm_provider(settings.llm)
 
     # Create embedding service for GPC category tagging

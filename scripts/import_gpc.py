@@ -27,20 +27,24 @@ def load_gpc_json(path: Path) -> dict:
 
 
 def extract_level5_categories(schema: list) -> list[dict]:
-    """Extract all Level 5 categories from GPC schema."""
+    """Extract all Level 5 categories from GPC schema, deduplicating by code."""
     categories = []
+    seen_codes = set()
 
     def traverse(categories_list: list):
         for cat in categories_list:
             if cat.get("Level") == 5:
-                categories.append(
-                    {
-                        "code": cat.get("Code"),
-                        "title": cat.get("Title"),
-                        "definition": cat.get("Definition", ""),
-                        "active": cat.get("Active", True),
-                    }
-                )
+                code = cat.get("Code")
+                if code not in seen_codes:
+                    seen_codes.add(code)
+                    categories.append(
+                        {
+                            "code": code,
+                            "title": cat.get("Title"),
+                            "definition": cat.get("Definition", ""),
+                            "active": cat.get("Active", True),
+                        }
+                    )
             children = cat.get("Childs", [])
             if children:
                 traverse(children)
@@ -95,7 +99,8 @@ async def embed_categories(
         )
         for i, cat in enumerate(categories):
             embed_text = f"{cat['title']} - {cat['definition']}"
-            print(f"Embedding {i + 1}/{len(categories)}: {cat['title']} (placeholder)")
+            if i % 100 == 0:
+                print(f"Embedding {i + 1}/{len(categories)}: {cat['title']} (placeholder)")
             cat["embedding"] = _placeholder_embedding(embed_text)
         return categories
 
@@ -105,7 +110,8 @@ async def embed_categories(
         # Truncate to ~512 tokens (approx 2000 chars)
         embed_text = embed_text[:2000]
 
-        print(f"Embedding {i + 1}/{len(categories)}: {cat['title']}")
+        if i % 100 == 0:
+            print(f"Embedding {i + 1}/{len(categories)}: {cat['title']}")
         embedding = await generate_embedding(embed_text, client, model)
         cat["embedding"] = embedding
 
@@ -117,26 +123,37 @@ def export_sql(
     output_path: Path,
     source_date: str,
     model: str = "nomic-embed-text",
+    language_code: str = "en",
+    create_tables: bool = True,
 ):
-    """Export categories to SQL file."""
-    with open(output_path, "w", encoding="utf-8") as f:
-        # Drop and recreate table
-        f.write("BEGIN;\n")
-        f.write("DROP TABLE IF EXISTS gpc_categories CASCADE;\n")
-        f.write("DROP TABLE IF EXISTS gpc_import_metadata CASCADE;\n")
+    """Export categories to SQL file.
 
-        # Create tables
-        f.write(
-            """
+    When ``create_tables`` is ``True`` (default), the file includes DROP
+    + CREATE statements suitable for a fresh import.  When ``False`` only
+    INSERT statements are emitted so the file can be stacked with other
+    language imports into the same table.
+    """
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("BEGIN;\n")
+
+        if create_tables:
+            f.write("DROP TABLE IF EXISTS gpc_categories CASCADE;\n")
+            f.write("DROP TABLE IF EXISTS gpc_import_metadata CASCADE;\n")
+
+            # Create tables
+            f.write(
+                """
 CREATE TABLE gpc_categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gpc_code INTEGER NOT NULL UNIQUE,
+    gpc_code INTEGER NOT NULL,
     title TEXT NOT NULL,
     definition TEXT,
     level INTEGER NOT NULL DEFAULT 5,
     embedding vector(768) NOT NULL,
+    language_code VARCHAR(5) NOT NULL DEFAULT 'en',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (gpc_code, language_code)
 );
 
 CREATE INDEX idx_gpc_embedding ON gpc_categories
@@ -150,7 +167,7 @@ CREATE TABLE gpc_import_metadata (
     embedding_model TEXT NOT NULL
 );
 """
-        )
+            )
 
         # Insert categories
         for cat in categories:
@@ -159,19 +176,20 @@ CREATE TABLE gpc_import_metadata (
             definition_escaped = cat["definition"].replace("'", "''")
             f.write(
                 f"""
-INSERT INTO gpc_categories (gpc_code, title, definition, embedding)
+INSERT INTO gpc_categories (gpc_code, title, definition, embedding, language_code)
 VALUES ({cat["code"]}, '{title_escaped}',
-        '{definition_escaped}', '{embedding_str}'::vector);
+        '{definition_escaped}', '{embedding_str}'::vector, '{language_code}');
 """
             )
 
-        # Insert metadata
-        f.write(
-            f"""
+        # Insert metadata (only for first import or when creating tables)
+        if create_tables:
+            f.write(
+                f"""
 INSERT INTO gpc_import_metadata (source_date, category_count, embedding_model)
 VALUES ('{source_date}', {len(categories)}, '{model}');
 """
-        )
+            )
 
         f.write("COMMIT;\n")
 
@@ -184,6 +202,17 @@ async def main():
     parser.add_argument("--output", required=True, help="Path to output SQL file")
     parser.add_argument("--ollama-host", default="http://localhost:11434", help="Ollama host")
     parser.add_argument("--model", default="nomic-embed-text", help="Embedding model name")
+    parser.add_argument("--language", default="en", help="Language code (e.g., en, de, fr)")
+    parser.add_argument(
+        "--create-tables",
+        action="store_true",
+        help="Include DROP/CREATE statements (default: True)",
+    )
+    parser.add_argument(
+        "--no-create-tables",
+        action="store_true",
+        help="Exclude DROP/CREATE statements (INSERT only)",
+    )
     args = parser.parse_args()
 
     print(f"Loading GPC JSON from {args.input}...")
@@ -198,7 +227,15 @@ async def main():
     categories = await embed_categories(categories, args.ollama_host, args.model)
 
     print("Exporting SQL...")
-    export_sql(categories, Path(args.output), source_date, args.model)
+    create_tables = not args.no_create_tables
+    export_sql(
+        categories,
+        Path(args.output),
+        source_date,
+        args.model,
+        language_code=args.language,
+        create_tables=create_tables,
+    )
 
     print("Done!")
 

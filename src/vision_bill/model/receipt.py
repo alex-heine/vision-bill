@@ -21,6 +21,10 @@ MAX_TAG_LENGTH = 100
 
 class LineItem(BaseModel):
     description: str = Field(description="Name of the purchased item")
+    english_description: str | None = Field(
+        default=None,
+        description="English translation of the item description for GPC category matching",
+    )
     quantity: float = Field(gt=0, description="Quantity purchased")
     unit_price: Decimal = Field(description="Price per unit")
     total_price: Decimal = Field(description="quantity * unit_price, line total")
@@ -95,6 +99,11 @@ class Receipt(BaseModel):
     payment_method: Literal[
         "cash", "credit_card", "debit_card", "mobile_payment", "check", "other", "unknown"
     ] = Field(default="unknown")
+
+    language: str = Field(
+        default="en",
+        description="ISO 639-1 language code of the receipt (e.g., en, de, fr)",
+    )
 
     @field_validator("total")
     @classmethod

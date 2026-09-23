@@ -223,6 +223,31 @@ Additional notes:
 - Auth pattern: protect routes with `Depends(get_current_user)` (or `require_admin`); always scope queries with `user_id` + `can_see_all`
 - Background work: the analysis queue is drained by `AnalysisScheduler`; benchmark tasks by `BenchmarkService` — do not add ad-hoc background loops
 
+## GPC Vector Database Debugging
+
+**⚠️ WARNING: Never read GPC SQL import files directly into your context.**
+The generated SQL files (`src/vision_bill/data/gpc_import_*.sql`) are ~32MB each and contain 2,085 INSERT statements with 768-dimensional vector data (~15KB per vector). Reading them directly will overflow your context window and cause catastrophic failure.
+
+**Always use the analysis script instead:**
+```bash
+python scripts/analyze_gpc_sql.py src/vision_bill/data/gpc_import_en.sql
+```
+
+This script provides a concise summary without dumping vector data:
+- Total INSERT count
+- Language code distribution
+- Sample titles (first 5)
+- Vector data size summary
+- Duplicate GPC code detection
+- Table structure verification
+
+**Key facts about the GPC data:**
+- 2,085 unique Level 5 categories (GPC codes are identical across all languages)
+- Each vector is 768 dimensions (nomic-embed-text model)
+- Multi-language support: each language is imported separately with `language_code` column
+- Similarity threshold: 0.55 for auto-tagging, 0.50 for suggestions
+- Cosine similarity via pgvector's `<=>` operator
+
 ## Edit files
 - The edit tool matches oldString byte-for-byte. Read the file again immediately before each edit, and again after every successful edit line content shifts.
 - Copy oldString verbatim from the file you just read. Do not retype, reindent or normalise it. Preserve tabs, trailing spaces and blank lines.

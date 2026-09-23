@@ -300,6 +300,7 @@ def _make_receipt() -> Receipt:
         tax_total=Decimal("4.50"),
         total=Decimal("54.50"),
         payment_method="credit_card",
+        language="en",
     )
 
 
@@ -320,6 +321,7 @@ def _make_row(**overrides: object) -> ReceiptRow:
         "tip": None,
         "total": Decimal("54.50"),
         "payment_method": "credit_card",
+        "language": "en",
         "created_at": Date(2024, 1, 15),
         "status": "unverified",
         "image_id": None,
