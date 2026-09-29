@@ -22,7 +22,7 @@ from pathlib import Path
 
 DATA_DIR = Path("/data")
 FIXTURES_DIR = Path("/fixtures")
-MODES = ("ok", "down", "repair_first", "broken")
+MODES = ("ok", "down", "repair_first", "broken", "unreadable", "slow")
 MODELS = [
     {
         "id": "e2e-vision",
@@ -100,7 +100,7 @@ def _extract_image_hash(body: dict) -> str | None:
     return None
 
 
-def _content_for(body: dict) -> str:
+def _single_content_for(body: dict) -> str:
     if state["mode"] == "broken":
         requests_log.append({"image_sha256": None, "served": "broken"})
         return '{"merchant_name": "broken", oops'
@@ -114,6 +114,34 @@ def _content_for(body: dict) -> str:
         return FIXTURES[digest]
     requests_log.append({"image_sha256": digest, "served": "generic"})
     return json.dumps(GENERIC_RECEIPT)
+
+
+def _content_for(body: dict) -> str:
+    if state["mode"] == "unreadable":
+        return json.dumps({"error": {"code": "unreadable", "message": "Photo is too blurry"}})
+    if state["mode"] == "slow":
+        time.sleep(3)
+    content = _single_content_for(body)
+    photos = [part for message in body.get("messages", [])
+              if isinstance(message.get("content"), list)
+              for part in message["content"] if part.get("type") == "image_url"]
+    if len(photos) <= 1:
+        return content
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return content
+    # Multi-photo e2e cases deliberately upload the same fixture more than once.
+    # Return all copies with explicit overlap candidates to exercise verification.
+    items = payload["line_items"]
+    payload["line_items"] = [{**item, "source_image": source}
+                             for source in range(len(photos)) for item in items]
+    size = len(items)
+    payload["duplicate_candidates"] = [
+        {"first_index": source * size + row, "second_index": (source + 1) * size + row}
+        for source in range(len(photos) - 1) for row in range(size)
+    ]
+    return json.dumps(payload)
 
 
 class Handler(BaseHTTPRequestHandler):

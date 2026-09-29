@@ -2,7 +2,7 @@ import { test } from '@playwright/test';
 
 const STUB_BASE = 'http://localhost:9123';
 
-export type StubMode = 'ok' | 'down' | 'repair_first' | 'broken';
+export type StubMode = 'ok' | 'down' | 'repair_first' | 'broken' | 'unreadable' | 'slow';
 
 export async function setStubMode(mode: StubMode): Promise<void> {
 	const response = await fetch(`${STUB_BASE}/__mode`, {

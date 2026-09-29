@@ -50,3 +50,31 @@ class ReceiptStatistics(BaseModel):
     payment_methods: list[NamedStatistics]
     weekdays: list[WeekdayStatistics]
     weekly_spending: list[WeeklyStatistics]
+
+
+class ItemCategoryStatistics(BaseModel):
+    category: str
+    currency: str
+    total: Decimal
+    share: Decimal | None
+
+
+class MonthlyItemStatistics(ItemCategoryStatistics):
+    month: date
+
+
+class ItemReconciliation(BaseModel):
+    currency: str
+    receipt_total: Decimal
+    item_total: Decimal
+    deposit_total: Decimal
+    unallocated_total: Decimal
+
+
+class ItemStatistics(BaseModel):
+    months: int
+    date_from: date
+    date_to: date
+    categories: list[ItemCategoryStatistics]
+    monthly: list[MonthlyItemStatistics]
+    reconciliation: list[ItemReconciliation]

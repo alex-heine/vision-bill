@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createQuery } from '@tanstack/svelte-query';
+	import { resolve } from '$app/paths';
 	import { t, translate } from '$lib/i18n';
 	import { api, ApiError } from '$lib/api/client';
 	import { queryClient } from '$lib/query/client';
@@ -9,12 +10,14 @@
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import ReceiptImage from '$lib/ui/ReceiptImage.svelte';
-	import type { ImageRow } from '$lib/types';
+	import type { ImageRow, ImageStatus } from '$lib/types';
+
+	const statuses: ImageStatus[] = ['pending', 'processing', 'failed', 'timed_out', 'unreadable'];
 
 	const list = createQuery(
 		() => ({
-			queryKey: queryKeys.images({ status: ['pending', 'failed'] }),
-			queryFn: () => api.listImages({ status: ['pending', 'failed'], limit: 100 }),
+			queryKey: queryKeys.images({ status: statuses }),
+			queryFn: () => api.listImages({ status: statuses, limit: 100 }),
 			refetchInterval: 15_000
 		}),
 		() => queryClient
@@ -131,7 +134,9 @@
 					/>
 					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm font-medium">
-							{image.original_filename ?? `#${image.id}`}
+							<a class="text-primary underline" href={resolve(`/upload?job=${image.id}`)}
+								>{image.original_filename ?? `#${image.id}`}</a
+							>
 						</p>
 						<p class="text-xs text-on-surface-variant">
 							{#if image.created_at}
@@ -139,11 +144,13 @@
 							{/if}
 							{#if image.status === 'pending'}
 								<span class="text-warning">{$t('queue.pending')}</span>
-							{:else}
+							{:else if image.status === 'failed'}
 								<span class="text-error">{$t('queue.failed')}</span>
+							{:else}
+								<span>{$t(`submission.${image.status}`)}</span>
 							{/if}
 						</p>
-						{#if image.status === 'failed' && image.error}
+						{#if image.error}
 							<p class="mt-1 truncate text-xs text-error" title={image.error}>
 								{image.error}
 							</p>
@@ -155,6 +162,7 @@
 						aria-label={$t('common.remove')}
 						title={$t('common.remove')}
 						onclick={() => (confirmDelete = image)}
+						disabled={image.status === 'processing'}
 					>
 						<Icon icon="trash" />
 					</button>

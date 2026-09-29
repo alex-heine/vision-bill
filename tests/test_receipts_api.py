@@ -81,6 +81,7 @@ def _make_pool(conn: AsyncMock) -> MagicMock:
 
 def _make_provider() -> MagicMock:
     provider = MagicMock(spec=LLMProvider)
+    provider.analysis_timeout_seconds = 600
     provider.check_connection = AsyncMock(return_value=True)
     provider.get_available_models = AsyncMock(return_value=[ModelInfo(id="test-model")])
     provider.analyse_receipt_from_model = AsyncMock(return_value=_make_receipt())
@@ -354,7 +355,7 @@ def test_upload_image_uses_configured_bypass_review_default(
         for call in ctx.conn.fetchrow.call_args_list
         if call.args and call.args[0] == image_db_module.INSERT_IMAGE_SQL
     )
-    assert store_call.args[-1] is True
+    assert store_call.args[8] is True
 
 
 def test_upload_image_explicit_false_overrides_configured_default(
@@ -383,7 +384,7 @@ def test_upload_image_explicit_false_overrides_configured_default(
         for call in ctx.conn.fetchrow.call_args_list
         if call.args and call.args[0] == image_db_module.INSERT_IMAGE_SQL
     )
-    assert store_call.args[-1] is False
+    assert store_call.args[8] is False
 
 
 def test_ui_config_exposes_bypass_review_default(
@@ -435,6 +436,7 @@ def test_upload_image_returns_202_when_no_models(api_context: ApiContext) -> Non
 def test_upload_image_returns_202_when_provider_unreachable(api_context: ApiContext) -> None:
     ctx = api_context
     ctx.provider.check_connection = AsyncMock(return_value=False)
+    ctx.provider.get_available_models = AsyncMock(return_value=[])
     ctx.conn.fetchrow = AsyncMock(return_value=_image_row(id=IMAGE_ID))
 
     response = ctx.client.post(
@@ -735,6 +737,37 @@ def test_list_tags_endpoint(api_context: ApiContext) -> None:
     assert response.json() == ["coffee", "food"]
 
 
+def test_spending_categories_require_auth(api_context: ApiContext) -> None:
+    response = api_context.client.get(f"{TAGS_URL}/categories")
+    assert response.status_code == 200
+    assert {"code": "milk"} in response.json()
+    main_module.app.state.receipt_service.user_db._pool = _make_pool(api_context.conn)
+    main_module.app.dependency_overrides.clear()
+    assert api_context.client.get(f"{TAGS_URL}/categories").status_code == 401
+
+
+def test_category_suggestion_scopes_exact_history_to_user(api_context: ApiContext) -> None:
+    ctx = api_context
+    ctx.conn.fetchrow = AsyncMock(return_value={"category": "milk"})
+    response = ctx.client.get(
+        f"{TAGS_URL}/category-suggestion",
+        params={"merchant_name": "  Rewe  ", "description": " H-MILCH   1,5% "},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"category": "milk", "source": "history"}
+    sql, user, merchant, description = ctx.conn.fetchrow.await_args.args
+    assert "item_category_aliases" in sql
+    assert user == USER_ID
+    assert (merchant, description) == ("rewe", "h-milch 1,5%")
+
+    ctx.conn.fetchrow = AsyncMock(return_value=None)
+    missing = ctx.client.get(
+        f"{TAGS_URL}/category-suggestion",
+        params={"merchant_name": "Rewe", "description": "H-MILCH 3,5%"},
+    )
+    assert missing.json() == {"category": None, "source": None}
+
+
 def test_create_tag_endpoint_new(api_context: ApiContext) -> None:
     """POST /tags creates a tag (201) and returns the normalized name."""
     ctx = api_context
@@ -815,8 +848,24 @@ def test_update_receipt_accepts_suggested_tags(api_context: ApiContext) -> None:
         if call.args and call.args[0] == receipt_db_module.INSERT_LINE_ITEM_SQL
     ]
     assert len(insert_calls) == 1
-    # The second-to-last bound parameter is the tags array: normalized + deduped.
-    assert insert_calls[0].args[-2] == ["brunch"]
+    # The tags array remains normalized and deduped.
+    assert insert_calls[0].args[6] == ["brunch"]
+
+
+@pytest.mark.parametrize("invalid", [["milk"], {"code": "milk"}, "fake_code"])
+def test_update_rejects_invalid_spending_category(
+    api_context: ApiContext, invalid: object
+) -> None:
+    body = {
+        "confidence": 95, "merchant_name": "ACME", "date": "2024-01-15",
+        "line_items": [{
+            "description": "Widget", "quantity": 1, "unit_price": "10.00",
+            "total_price": "10.00", "spending_category": invalid,
+        }],
+        "subtotal": "10.00", "total": "10.00",
+    }
+    response = api_context.client.put(f"{RECEIPTS_URL}/{RECEIPT_ID}", json=body)
+    assert response.status_code == 422
 
 
 # ── Receipts (GET /receipts, GET /receipts/{id}, verify) ───────────────

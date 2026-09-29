@@ -7,10 +7,10 @@ from typing import Any
 from ..model.receipt import Receipt
 
 MONEY_TOLERANCE = Decimal("0.01")
-SCORING_VERSION = "1"
-# Bumped to 3: the line-item `category` field was removed from the schema
-# embedded in the prompt (only the receipt carries a category now).
-PROMPT_VERSION = "3"
+# Bumped to 2: scoring output includes a separate spending-category component.
+SCORING_VERSION = "2"
+# Bumped to 4: line-item spending categories use the fixed vocabulary.
+PROMPT_VERSION = "4"
 COMPONENT_WEIGHTS = {"header": 0.20, "totals": 0.35, "line_items": 0.30, "taxes": 0.15}
 
 
@@ -54,6 +54,19 @@ def score_receipts(expected: Receipt, actual: Receipt) -> dict[str, float]:
         for e, a in zip(expected_items, actual_items, strict=False)
     )
     line_items = _fraction(item_matches, max(len(expected_items), len(actual_items)))
+    labelled_items = [
+        (index, item)
+        for index, item in enumerate(expected_items)
+        if item.spending_category != "unknown"
+    ]
+    if labelled_items:
+        category_matches = sum(
+            index < len(actual_items)
+            and item.description == actual_items[index].description
+            and item.spending_category == actual_items[index].spending_category
+            for index, item in labelled_items
+        )
+        spending_categories = _fraction(category_matches, len(labelled_items))
     expected_taxes, actual_taxes = expected.taxes, actual.taxes
     tax_matches = sum(
         e.name == a.name and money_equal(e.amount, a.amount)
@@ -61,6 +74,8 @@ def score_receipts(expected: Receipt, actual: Receipt) -> dict[str, float]:
     )
     taxes = _fraction(tax_matches, max(len(expected_taxes), len(actual_taxes)))
     components = {"header": header, "totals": totals, "line_items": line_items, "taxes": taxes}
+    if labelled_items:
+        components["spending_categories"] = spending_categories
     components["overall"] = sum(
         components[name] * weight for name, weight in COMPONENT_WEIGHTS.items()
     )

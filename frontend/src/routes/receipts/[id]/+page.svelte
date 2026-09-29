@@ -10,7 +10,7 @@
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import ReceiptEditor from '$lib/ui/ReceiptEditor.svelte';
-	import ReceiptImage from '$lib/ui/ReceiptImage.svelte';
+	import ReceiptPhotos from '$lib/ui/ReceiptPhotos.svelte';
 	import type { ReceiptWrite } from '$lib/types';
 
 	let id = $derived(page.url.pathname.split('/').pop() ?? '');
@@ -18,6 +18,9 @@
 	let verifyOpen = $state(false);
 	let verifying = $state(false);
 	let saving = $state(false);
+	let editorRevision = $state(0);
+	let savedRevision = $state(0);
+	let editorDirty = $state(false);
 
 	const detail = createQuery(
 		() => ({
@@ -36,13 +39,17 @@
 	let canVerify = $derived(data !== null && data.receipt.status === 'unverified');
 
 	async function refresh(): Promise<void> {
-		await queryClient.invalidateQueries({ queryKey: queryKeys.receipt(id) });
+		const fresh = await api.getReceipt(id);
+		queryClient.setQueryData(queryKeys.receipt(id), fresh);
+		editorRevision++;
+		await queryClient.invalidateQueries({ queryKey: ['statistics'] });
 	}
 
 	async function saveOnly(write: ReceiptWrite) {
 		saving = true;
 		try {
 			await api.updateReceipt(id, write);
+			savedRevision++;
 			snackbar.notify('success', translate('receipt.saved'));
 			await refresh();
 		} catch {
@@ -56,6 +63,7 @@
 		saving = true;
 		try {
 			await api.updateReceipt(id, write);
+			savedRevision++;
 			await api.verifyReceipt(id);
 			snackbar.notify('success', translate('receipt.verifySuccess'));
 			await refresh();
@@ -131,7 +139,8 @@
 			{#if canVerify}
 				<button
 					type="button"
-					class="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-on-primary hover:opacity-90"
+					class="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-on-primary hover:opacity-90 disabled:opacity-50"
+					disabled={editorDirty || saving || verifying}
 					onclick={() => (verifyOpen = true)}
 				>
 					<Icon icon="check" />
@@ -150,12 +159,10 @@
 			{#if data.receipt.image_id !== null}
 				<aside class="mb-6 min-w-0 lg:mb-0">
 					<div class="min-w-0 lg:sticky lg:top-20">
-						<ReceiptImage
+						<ReceiptPhotos
 							imageId={data.receipt.image_id}
 							thumbnailPath={data.receipt.thumbnail_path ?? null}
 							alt={data.receipt.merchant_name || $t('receipts.unknownVendor')}
-							class="mx-auto block h-auto max-w-full rounded-xl border border-outline-variant bg-surface-container object-contain lg:max-h-[calc(100vh-6rem)] lg:w-full"
-							clickable={false}
 						/>
 					</div>
 				</aside>
@@ -164,12 +171,15 @@
 			<div class="min-w-0 {data.receipt.image_id === null ? 'lg:col-span-2' : ''}">
 				<ReceiptEditor
 					receipt={data.receipt}
+					revision={editorRevision}
+					{savedRevision}
 					lineItems={data.line_items}
 					taxes={data.taxes}
 					collectionIds={data.collection_ids}
 					busy={saving || verifying}
 					onSave={saveOnly}
 					onSaveAndVerify={canVerify ? saveAndVerify : undefined}
+					onDirtyChange={(dirty) => (editorDirty = dirty)}
 				/>
 			</div>
 		</div>

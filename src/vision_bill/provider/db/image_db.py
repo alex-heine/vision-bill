@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Mapping
 from typing import Any
@@ -6,14 +7,15 @@ from uuid import UUID
 import asyncpg
 
 from ...config import PGSettings
-from ...model.db.image import ImageRow
+from ...model.db.image import ImagePart, ImageRow
 
 # ── SQL (DML; DDL lives in alembic/versions/0001_initial_schema.py) ──
 
 INSERT_IMAGE_SQL = """
     INSERT INTO images
-        (original_filename, media_type, size_bytes, image_path, thumbnail_path, status, user_id, bypass_review)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (original_filename, media_type, size_bytes, image_path, thumbnail_path, status, user_id,
+         bypass_review, additional_images, model_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
     RETURNING *
 """
 
@@ -130,6 +132,8 @@ class ImageDB:
         user_id: UUID | None = None,
         bypass_review: bool = False,
         thumbnail_path: str | None = None,
+        additional_images: list[ImagePart] | None = None,
+        model_id: str | None = None,
     ) -> ImageRow:
         """Insert a new images row (default status ``pending``) and return it."""
         logger.info("Storing image row for %s (status=%s)", image_path, status)
@@ -144,6 +148,8 @@ class ImageDB:
                 status,
                 user_id,
                 bypass_review,
+                json.dumps([part.model_dump() for part in additional_images or []]),
+                model_id,
             )
         return self._image_row_from_record(row)
 
@@ -221,6 +227,22 @@ class ImageDB:
         """Update the on-disk path of an image (e.g. tmp -> permanent on verify)."""
         async with self.pool.acquire() as conn:
             await conn.execute(UPDATE_IMAGE_PATH_SQL, image_id, image_path)
+
+    async def mark_terminal(self, image_id: UUID, status: str, error: str) -> None:
+        if status not in ("timed_out", "unreadable"):
+            raise ValueError("Unsupported terminal analysis status")
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE images SET status = $2, error = $3, processing_at = NULL WHERE id = $1",
+                image_id, status, error,
+            )
+
+    async def update_additional_images(self, image_id: UUID, parts: list[ImagePart]) -> None:
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE images SET additional_images = $2::jsonb WHERE id = $1",
+                image_id, json.dumps([part.model_dump() for part in parts]),
+            )
 
     async def update_image_thumbnail_path(self, image_id: UUID, thumbnail_path: str) -> None:
         """Update the stored thumbnail path for an image row."""

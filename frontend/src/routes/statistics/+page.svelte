@@ -6,8 +6,10 @@
 	import { queryClient } from '$lib/query/client';
 	import CollectionPicker from '$lib/ui/CollectionPicker.svelte';
 	import StatisticsCharts from '$lib/ui/StatisticsCharts.svelte';
+	import ItemSpendingCharts from '$lib/ui/ItemSpendingCharts.svelte';
 
 	let collectionId = $state('');
+	let months = $state(12);
 
 	const collections = createQuery(
 		() => ({ queryKey: queryKeys.collections(), queryFn: () => api.listCollections() }),
@@ -18,6 +20,13 @@
 		() => ({
 			queryKey: queryKeys.statistics(12, collectionId),
 			queryFn: () => api.getStatistics(12, collectionId || undefined)
+		}),
+		() => queryClient
+	);
+	const itemStatistics = createQuery(
+		() => ({
+			queryKey: queryKeys.itemStatistics(months, collectionId),
+			queryFn: () => api.getItemStatistics(months, collectionId || undefined)
 		}),
 		() => queryClient
 	);
@@ -46,6 +55,32 @@
 			<span class="mt-1 block text-xs text-on-surface-variant"
 				>{$t('statistics.collectionEmpty')}</span
 			>
+		{/if}
+	</div>
+	<div class="mt-6">
+		<label class="block text-sm text-on-surface-variant" for="spending-months"
+			>{$t('statistics.months')}</label
+		>
+		<select
+			id="spending-months"
+			class="mt-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
+			value={months}
+			onchange={(event) => (months = Number(event.currentTarget.value))}
+		>
+			{#each [3, 6, 12, 24, 36] as value (value)}<option {value}>{value}</option>{/each}
+		</select>
+	</div>
+	<div class="mt-4">
+		{#if itemStatistics.isLoading}
+			<p class="text-sm text-on-surface-variant">{$t('common.loading')}</p>
+		{:else if itemStatistics.error}
+			<p
+				class="rounded-xl border border-outline-variant bg-surface-container-low p-4 text-sm text-on-surface-variant"
+			>
+				{$t('dashboard.loadError')}
+			</p>
+		{:else if itemStatistics.data}
+			<ItemSpendingCharts stats={itemStatistics.data} />
 		{/if}
 	</div>
 

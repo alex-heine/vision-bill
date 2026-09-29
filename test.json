@@ -1,4 +1,5 @@
 {'filename': './data/bauhaus.jpeg', 'media_type': 'image/jpeg', 'size_bytes': 991768, 'models': [
+
         {'id': 'hf.co/sahilchachra/Unlimited-OCR-GGUF:BF16', 'parameter_size': '2.93B', 'capabilities': ['completion', 'vision'
             ]
         },

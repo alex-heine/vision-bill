@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 from uuid import UUID
@@ -6,7 +7,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from ..config import settings
-from ..model.db.image import ImageRow
+from ..model.db.image import ImagePart, ImageRow
+from ..provider.llm.errors import AnalysisTimeoutError, UnreadableReceiptError
 from ..security.dependencies import get_current_user
 from ..security.models import User
 from ..service.analysis_scheduler import AnalysisScheduler
@@ -28,16 +30,20 @@ def _location(image_id: UUID) -> str:
 
 @router.post("", status_code=201, response_model=None)
 async def upload_image(
-    receipt: UploadFile = File(...),  # noqa: B008
+    receipt: list[UploadFile] = File(...),  # noqa: B008
     model_id: str | None = None,
     bypass_review: bool | None = Query(None),
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     image_service: ImageService = Depends(get_image_service),  # noqa: B008
+    analysis_scheduler: AnalysisScheduler = Depends(get_analysis_scheduler),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> JSONResponse:
-    """Create an image resource by uploading a receipt file.
+    """Create a receipt submission from one or more ordered photos.
 
-    When a vision model is reachable the image is analysed synchronously, a
+    Multiple photos return 202 immediately after storage and wake the scheduler.
+    Their image UUID identifies the durable submission and all its source photos.
+
+    For one photo, when a model is reachable the image is analysed synchronously, a
     receipt is persisted and a ``201`` is returned. When no model is reachable
     the image is queued as ``pending`` and a ``202`` is returned; the background
     scheduler picks it up later. Both responses carry a ``Location`` header so a
@@ -52,36 +58,67 @@ async def upload_image(
         settings.images.bypass_review_default if bypass_review is None else bypass_review
     )
 
-    content = await receipt.read()
-
+    if not 1 <= len(receipt) <= 10:
+        raise HTTPException(status_code=422, detail="Upload between 1 and 10 photos of one receipt")
+    parts: list[ImagePart] = []
     try:
-        info = image_service.validate_and_inspect(content)
-    except UnsupportedImageTypeError as e:
-        raise HTTPException(
-            status_code=415,
-            detail=f"Unsupported image type: {e.detected_type}",
-        ) from e
+        for upload in receipt:
+            content = await upload.read(20 * 1024 * 1024 + 1)
+            if len(content) > 20 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="Each photo must be at most 20 MB")
+            try:
+                info = image_service.validate_and_inspect(content)
+            except UnsupportedImageTypeError as exc:
+                raise HTTPException(status_code=415, detail="Unsupported image type") from exc
+            path = image_service.store_tmp_image(content)
+            part = ImagePart(
+                image_path=str(path), original_filename=upload.filename,
+                media_type=info.media_type, size_bytes=info.size_bytes,
+            )
+            parts.append(part)
+            thumb = image_service.generate_thumbnail(path)
+            part.thumbnail_path = str(thumb) if thumb else None
+    except BaseException:
+        for part in parts:
+            image_service.delete_image(Path(part.image_path))
+        raise
 
-    tmp_path = image_service.store_tmp_image(content)
-    thumb_path = image_service.generate_thumbnail(tmp_path)
-
-    if await receipt_service.check_connection():
-        models = await receipt_service.get_available_models()
-    else:
-        logger.warning("LLM provider unreachable - queueing image for background analysis")
-        models = []
+    first = parts[0]
+    tmp_path = Path(first.image_path)
+    models = []
+    if len(parts) == 1:
+        try:
+            async with asyncio.timeout(5):
+                if await receipt_service.check_connection():
+                    models = await receipt_service.get_available_models()
+        except Exception:  # noqa: BLE001 - discovery failure leaves the persisted upload queued
+            logger.warning("LLM provider unreachable - queueing image for background analysis")
     provider_available = bool(models)
 
-    image_row = await receipt_service.store_image(
-        image_path=str(tmp_path),
-        original_filename=receipt.filename,
-        media_type=info.media_type,
-        size_bytes=info.size_bytes,
-        status="pending",
-        user_id=current_user.id,
-        bypass_review=effective_bypass_review,
-        thumbnail_path=str(thumb_path) if thumb_path else None,
-    )
+    try:
+        image_row = await receipt_service.store_image(
+            image_path=first.image_path,
+            original_filename=first.original_filename,
+            media_type=first.media_type,
+            size_bytes=first.size_bytes,
+            status="pending",
+            user_id=current_user.id,
+            bypass_review=effective_bypass_review,
+            thumbnail_path=first.thumbnail_path,
+            additional_images=parts[1:],
+            model_id=model_id,
+        )
+    except BaseException:
+        for part in parts:
+            image_service.delete_image(Path(part.image_path))
+        raise
+
+    if len(parts) > 1:
+        analysis_scheduler.trigger()
+        return JSONResponse(
+            status_code=202, headers={"Location": _location(image_row.id)},
+            content={"image_id": str(image_row.id), "status": "pending"},
+        )
 
     if not provider_available:
         return JSONResponse(
@@ -119,6 +156,14 @@ async def upload_image(
     )
     try:
         llm_response = await receipt_service.analyse_receipt_from_path(chosen_model, tmp_path)
+    except (AnalysisTimeoutError, UnreadableReceiptError) as exc:
+        status = "timed_out" if isinstance(exc, AnalysisTimeoutError) else "unreadable"
+        await receipt_service.mark_image_terminal(image_row.id, status, str(exc))
+        return JSONResponse(
+            status_code=504 if status == "timed_out" else 422,
+            headers={"Location": _location(image_row.id)},
+            content={"detail": str(exc), "image_id": str(image_row.id), "status": status},
+        )
     except Exception as exc:
         await receipt_service.mark_image_failed(image_row.id, str(exc))
         raise
@@ -156,8 +201,8 @@ async def upload_image(
             "status": "analyzed",
             "receipt_id": str(row.id),
             "original_filename": image_row.original_filename,
-            "media_type": info.media_type,
-            "size_bytes": info.size_bytes,
+            "media_type": first.media_type,
+            "size_bytes": first.size_bytes,
             "image_path": image_row.image_path,
         },
     )
@@ -219,6 +264,7 @@ async def get_image(
 @router.get("/{image_id}/file")
 async def get_image_file(
     image_id: UUID,
+    part: int = Query(0, ge=0),
     receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> FileResponse:
@@ -230,10 +276,14 @@ async def get_image_file(
     )
     if image is None or not image.image_path:
         raise HTTPException(status_code=404, detail="Image file not found")
-    path = Path(image.image_path)
+    parts = image.parts()
+    if part >= len(parts):
+        raise HTTPException(status_code=404, detail="Image part not found")
+    source = parts[part]
+    path = Path(source.image_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Image file not found")
-    return FileResponse(path, media_type=image.media_type or "application/octet-stream")
+    return FileResponse(path, media_type=source.media_type or "application/octet-stream")
 
 
 @router.get("/{image_id}/thumb")
@@ -276,10 +326,11 @@ async def delete_image(
     )
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
-    if image.status not in ("pending", "failed"):
-        raise HTTPException(status_code=409, detail="Only pending or failed images can be deleted")
+    if image.status not in ("pending", "failed", "timed_out", "unreadable"):
+        raise HTTPException(status_code=409, detail="Cannot delete an active or analyzed submission")
 
     await receipt_service.delete_image_row(image_id)
-    if image.image_path:
-        image_service.delete_image(Path(image.image_path))
+    for part in image.parts():
+        if part.image_path:
+            image_service.delete_image(Path(part.image_path))
     return {"deleted": image_id}

@@ -58,8 +58,14 @@ def _is_vision_capable(entry: dict[str, Any], capabilities: list[str] | None) ->
 
 
 class OpenAIProvider(LLMProvider):
-    def __init__(self, host: str, api_key: str, temperature: float = 0.0):
-        self._client = AsyncOpenAI(base_url=host, api_key=api_key)
+    def __init__(
+        self, host: str, api_key: str, temperature: float = 0.0,
+        analysis_timeout_seconds: float = 600,
+    ):
+        self.analysis_timeout_seconds = analysis_timeout_seconds
+        self._client = AsyncOpenAI(
+            base_url=host, api_key=api_key, timeout=analysis_timeout_seconds, max_retries=0
+        )
         self._temperature = temperature
 
     def update_runtime_settings(self, *, temperature: float) -> None:
@@ -153,29 +159,34 @@ class OpenAIProvider(LLMProvider):
         return response.choices[0].message.content or ""
 
     def _build_image_messages(
-        self, image: Path, tags: Sequence[str] | None = None
+        self, image: Path | Sequence[Path], tags: Sequence[str] | None = None
     ) -> list[dict[str, Any]]:
-        if not image.exists():
-            raise FileNotFoundError(f"Image not found at: {image}")
-        mime = mimetypes.guess_type(image.name)[0] or DEFAULT_IMAGE_MIME
-        image_b64 = base64.b64encode(image.read_bytes()).decode("utf-8")
+        images = [image] if isinstance(image, Path) else list(image)
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": self.build_prompt(tags, image_count=len(images))}
+        ]
+        for path in images:
+            if not path.exists():
+                raise FileNotFoundError(f"Image not found at: {path}")
+            mime = mimetypes.guess_type(path.name)[0] or DEFAULT_IMAGE_MIME
+            image_b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
+            content.append(
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_b64}"}}
+            )
         return [
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": self.build_prompt(tags)},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_b64}"}},
-                ],
+                "content": content,
             }
         ]
 
     async def analyse_receipt_from_model(
-        self, model_id: str, image: Path, tags: Sequence[str] | None = None
+        self, model_id: str, image: Path | Sequence[Path], tags: Sequence[str] | None = None
     ) -> Receipt:
         return (await self.analyse_receipt_with_metadata(model_id, image, tags=tags)).receipt
 
     async def analyse_receipt_with_metadata(
-        self, model_id: str, image: Path, tags: Sequence[str] | None = None
+        self, model_id: str, image: Path | Sequence[Path], tags: Sequence[str] | None = None
     ) -> AnalysisResult:
         from time import perf_counter
 
@@ -193,7 +204,9 @@ class OpenAIProvider(LLMProvider):
 
             logger.warning(f"Attempt {attempt}/{RETRY_LIMIT}: model returned content: {content}")
 
-            if bool(re.search(r"provide.*image", content, re.IGNORECASE | re.DOTALL)):
+            if not content.lstrip().startswith(("{", "```")) and re.search(
+                r"provide.*image", content, re.IGNORECASE | re.DOTALL
+            ):
                 raise ValueError(
                     f"Model '{model_id}' returned a message indicating it cannot process images. "
                     "Please ensure the model supports vision capabilities."
@@ -201,7 +214,9 @@ class OpenAIProvider(LLMProvider):
 
             try:
                 return AnalysisResult(
-                    receipt=self.parse_llm_response(content),
+                    receipt=self.parse_llm_response(
+                        content, image_count=1 if isinstance(image, Path) else len(image)
+                    ),
                     attempts=attempt,
                     elapsed_ms=(perf_counter() - started) * 1000,
                 )

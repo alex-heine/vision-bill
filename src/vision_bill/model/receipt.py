@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
+from .item_category import SpendingCategory, llm_category
+
 Category = Literal[
     "grocery",
     "electronics",
@@ -21,6 +23,9 @@ MAX_TAG_LENGTH = 100
 
 class LineItem(BaseModel):
     description: str = Field(description="Name of the purchased item")
+    spending_category: SpendingCategory = Field(
+        default="unknown", description="One spending category code"
+    )
     quantity: float = Field(gt=0, description="Quantity purchased")
     unit_price: Decimal = Field(description="Price per unit")
     total_price: Decimal = Field(description="quantity * unit_price, line total")
@@ -31,6 +36,11 @@ class LineItem(BaseModel):
             "suggested tag is allowed when nothing fits."
         ),
     )
+
+    @field_validator("spending_category", mode="before")
+    @classmethod
+    def _validate_llm_category(cls, value: object) -> str:
+        return llm_category(value)
 
     @field_validator("tags")
     @classmethod

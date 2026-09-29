@@ -2,9 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..model.statistics import ReceiptStatistics
+from ..model.statistics import ItemStatistics, ReceiptStatistics
 from ..security.dependencies import get_current_user
 from ..security.models import User
+from ..service.item_statistics_service import ItemStatisticsService
 from ..service.receipt_service import ReceiptService
 from .helper.helper import get_receipt_service
 
@@ -27,5 +28,27 @@ async def get_statistics(
         user_id=current_user.id,
         can_see_all=current_user.can_see_all,
         weeks=weeks,
+        collection_id=collection_id,
+    )
+
+
+@router.get("/items", response_model=ItemStatistics)
+async def get_item_statistics(
+    months: int = Query(12, ge=1, le=36),
+    collection_id: UUID | None = Query(None),  # noqa: B008
+    receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> ItemStatistics:
+    """Category shares and calendar-month trends through today, per currency.
+
+    Deposits are separate; unknown items remain in the spending denominator.
+    Receipt-wide adjustments are shown as unallocated, never guessed per item.
+    """
+    if not receipt_service.db_ready:
+        raise HTTPException(status_code=503, detail="Database not available")
+    return await ItemStatisticsService(receipt_service.pool).get_statistics(
+        user_id=current_user.id,
+        can_see_all=current_user.can_see_all,
+        months=months,
         collection_id=collection_id,
     )
