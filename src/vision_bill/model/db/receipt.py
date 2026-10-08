@@ -37,6 +37,9 @@ class LineItemRow(BaseModel):
     id: UUID
     receipt_id: UUID
     description: str
+    original_description: str | None = None
+    spending_category: str = "unknown"
+    category_source: str = "unknown"
     quantity: float
     unit_price: Decimal
     total_price: Decimal

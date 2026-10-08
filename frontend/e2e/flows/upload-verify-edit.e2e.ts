@@ -39,9 +39,11 @@ test.describe('upload, edit, save, verify', () => {
 		await page.locator('#re-currency').fill('USD');
 		const milkIdx = await lineIndex('Milk');
 		await page.locator(`#li-${milkIdx}-qty`).fill('2');
-		await page.getByRole('button', { name: 'Tags' }).first().click();
-		await page.getByPlaceholder('Search or add tags…').first().fill('test tag');
-		await page.getByPlaceholder('Search or add tags…').first().press('Enter');
+		const milkTags = page.locator('details').filter({ hasText: 'Optional tags' }).nth(milkIdx);
+		await milkTags.locator('summary').click();
+		await milkTags.getByRole('button', { name: 'Tags' }).click();
+		await milkTags.getByPlaceholder('Search or add tags…').fill('test tag');
+		await milkTags.getByPlaceholder('Search or add tags…').press('Enter');
 		await expect(
 			page.locator('span.rounded-full.bg-primary-container').filter({ hasText: 'test tag' })
 		).toBeVisible();
@@ -56,6 +58,7 @@ test.describe('upload, edit, save, verify', () => {
 		await expect(page.locator('#re-category')).toHaveValue('electronics');
 		const milkIdx2 = await lineIndex('Milk');
 		await expect(page.locator(`#li-${milkIdx2}-qty`)).toHaveValue('2');
+		await page.getByText('Optional tags').nth(milkIdx2).click();
 		await expect(
 			page.locator('span.rounded-full.bg-primary-container').filter({ hasText: 'test tag' })
 		).toBeVisible();

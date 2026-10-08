@@ -30,8 +30,11 @@ RETRY_LIMIT = 3
 
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, host: str, temperature: float = 0.0):
-        self._client = AsyncClient(host=host)
+    def __init__(
+        self, host: str, temperature: float = 0.0, analysis_timeout_seconds: float = 600
+    ):
+        self.analysis_timeout_seconds = analysis_timeout_seconds
+        self._client = AsyncClient(host=host, timeout=httpx.Timeout(analysis_timeout_seconds, connect=5))
         self._temperature = temperature
 
     def update_runtime_settings(self, *, temperature: float) -> None:
@@ -73,12 +76,12 @@ class OllamaProvider(LLMProvider):
         return result
 
     async def analyse_receipt_from_model(
-        self, model_id: str, image: Path, tags: Sequence[str] | None = None
+        self, model_id: str, image: Path | Sequence[Path], tags: Sequence[str] | None = None
     ) -> Receipt:
         return (await self.analyse_receipt_with_metadata(model_id, image, tags=tags)).receipt
 
     async def analyse_receipt_with_metadata(
-        self, model_id: str, image: Path, tags: Sequence[str] | None = None
+        self, model_id: str, image: Path | Sequence[Path], tags: Sequence[str] | None = None
     ) -> AnalysisResult:
         from time import perf_counter
 
@@ -96,7 +99,9 @@ class OllamaProvider(LLMProvider):
 
             logger.warning(f"Attempt {attempt}/{RETRY_LIMIT}: model returned content: {content}")
 
-            if bool(re.search(r"provide.*image", content, re.IGNORECASE | re.DOTALL)):
+            if not content.lstrip().startswith(("{", "```")) and re.search(
+                r"provide.*image", content, re.IGNORECASE | re.DOTALL
+            ):
                 raise ValueError(
                     f"Model '{model_id}' returned a message indicating it cannot process images. "
                     "Please ensure the model supports vision capabilities."
@@ -104,7 +109,9 @@ class OllamaProvider(LLMProvider):
 
             try:
                 return AnalysisResult(
-                    receipt=self.parse_llm_response(content),
+                    receipt=self.parse_llm_response(
+                        content, image_count=1 if isinstance(image, Path) else len(image)
+                    ),
                     attempts=attempt,
                     elapsed_ms=(perf_counter() - started) * 1000,
                 )
@@ -134,15 +141,17 @@ class OllamaProvider(LLMProvider):
         return response.message.content or ""
 
     def _build_image_messages(
-        self, image: Path, tags: Sequence[str] | None = None
+        self, image: Path | Sequence[Path], tags: Sequence[str] | None = None
     ) -> list[dict[str, Any]]:
-        if not image.exists():
-            raise FileNotFoundError(f"Image not found at: {image}")
+        images = [image] if isinstance(image, Path) else list(image)
+        for path in images:
+            if not path.exists():
+                raise FileNotFoundError(f"Image not found at: {path}")
         return [
             {
                 "role": "user",
-                "content": self.build_prompt(tags),
-                "images": [image],
+                "content": self.build_prompt(tags, image_count=len(images)),
+                "images": images,
             }
         ]
 

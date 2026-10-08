@@ -44,11 +44,18 @@
 
 	/** All form values are strings (amounts travel as decimal strings). */
 	interface EditorLine {
+		id?: string;
 		description: string;
+		original_description: string;
 		quantity: string;
 		unit_price: string;
 		total_price: string;
-		category: string;
+		spending_category: string;
+		category_source: LineItemRow['category_source'];
+		manualChoice: boolean;
+		remember_category: boolean;
+		suggestion: string | null;
+		lookupVersion: number;
 		tags: string[];
 	}
 
@@ -100,11 +107,18 @@
 			tip: receipt.tip === null ? '' : String(receipt.tip),
 			total: String(receipt.total),
 			lines: lineItems.map((line) => ({
+				id: line.id,
 				description: line.description,
+				original_description: line.original_description ?? line.description,
 				quantity: String(line.quantity),
 				unit_price: String(line.unit_price),
 				total_price: String(line.total_price),
-				category: line.category,
+				spending_category: line.spending_category ?? 'unknown',
+				category_source: line.category_source ?? 'unknown',
+				manualChoice: line.category_source === 'user',
+				remember_category: false,
+				suggestion: null,
+				lookupVersion: 0,
 				tags: [...(line.tags ?? [])]
 			})),
 			taxLines: taxes.map((tax) => ({
@@ -120,6 +134,8 @@
 		receipt,
 		lineItems,
 		taxes,
+		revision = 0,
+		savedRevision = 0,
 		collectionIds = [],
 		busy = false,
 		onSave,
@@ -129,6 +145,10 @@
 		receipt: ReceiptRow;
 		lineItems: LineItemRow[];
 		taxes: TaxLineRow[];
+		/** Bumped after a successful detail refetch to clear pending memory choices. */
+		revision?: number;
+		/** Bumped once PUT succeeds, even if a later refetch fails. */
+		savedRevision?: number;
 		/** Collections the receipt currently belongs to (detail view). */
 		collectionIds?: string[];
 		/** Disable the action buttons while a request is in flight. */
@@ -148,6 +168,17 @@
 	let form = $state<EditorForm>(initialForm());
 	let snapshot = $state<EditorForm>(initialForm());
 	let initializedReceiptId: string | undefined;
+	let initializedRevision = -1;
+	let initializedSavedRevision = 0;
+	let merchantVersion = 0;
+
+	function dirtyForm(value: EditorForm): string {
+		return JSON.stringify(value, (key, item: unknown) =>
+			['manualChoice', 'suggestion', 'lookupVersion', 'category_source'].includes(key)
+				? undefined
+				: item
+		);
+	}
 
 	// Tag vocabulary (the <select> source), fetched once per editor mount.
 	const tagList = createQuery(
@@ -155,6 +186,14 @@
 		() => queryClient
 	);
 	let tagOptions = $derived<string[]>(tagList.data ?? []);
+	const categoryList = createQuery(
+		() => ({
+			queryKey: queryKeys.spendingCategories(),
+			queryFn: () => api.listSpendingCategories()
+		}),
+		() => queryClient
+	);
+	let spendingCategories = $derived(categoryList.data ?? []);
 
 	// Collection vocabulary for the multi-select, fetched once per editor mount.
 	const collections = createQuery(
@@ -163,15 +202,23 @@
 	);
 
 	$effect(() => {
-		if (receipt.id !== initializedReceiptId) {
+		if (receipt.id !== initializedReceiptId || revision !== initializedRevision) {
+			merchantVersion++;
 			initializedReceiptId = receipt.id;
+			initializedRevision = revision;
 			const fresh = initialForm();
 			form = fresh;
 			snapshot = fresh;
 		}
 	});
+	$effect(() => {
+		if (savedRevision !== initializedSavedRevision) {
+			initializedSavedRevision = savedRevision;
+			for (const line of form.lines) line.remember_category = false;
+		}
+	});
 
-	let dirty = $derived(JSON.stringify(form) !== JSON.stringify(snapshot));
+	let dirty = $derived(dirtyForm(form) !== dirtyForm(snapshot));
 	$effect(() => {
 		onDirtyChange?.(dirty);
 	});
@@ -270,11 +317,13 @@
 			currency: form.currency.trim().toUpperCase() || 'USD',
 			category: form.category as Category,
 			line_items: form.lines.map((line) => ({
+				...(line.id ? { id: line.id } : {}),
 				description: line.description.trim(),
 				quantity: Number(line.quantity),
 				unit_price: line.unit_price.trim(),
 				total_price: line.total_price.trim(),
-				category: line.category as Category,
+				spending_category: line.spending_category,
+				...(line.remember_category ? { remember_category: true } : {}),
 				tags: line.tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)
 			})),
 			taxes: form.taxLines.map((tax) => ({
@@ -295,12 +344,81 @@
 	function addLine() {
 		form.lines.push({
 			description: '',
+			original_description: '',
 			quantity: '1',
 			unit_price: '',
 			total_price: '',
-			category: 'other',
+			spending_category: 'unknown',
+			category_source: 'unknown',
+			manualChoice: false,
+			remember_category: false,
+			suggestion: null,
+			lookupVersion: 0,
 			tags: []
 		});
+	}
+
+	function clearHistoryCategory(line: EditorLine) {
+		if (!line.manualChoice && line.category_source === 'history') {
+			line.spending_category = 'unknown';
+			line.category_source = 'unknown';
+		}
+		line.suggestion = null;
+		line.lookupVersion++;
+	}
+
+	function changeDescription(line: EditorLine, description: string) {
+		clearHistoryCategory(line);
+		line.remember_category = false;
+		line.description = description;
+	}
+
+	function changeMerchant(merchant: string) {
+		merchantVersion++;
+		form.merchant_name = merchant;
+		for (const line of form.lines) {
+			clearHistoryCategory(line);
+			line.remember_category = false;
+		}
+	}
+
+	async function lookupCategory(line: EditorLine) {
+		const description = line.description.trim();
+		const merchant = form.merchant_name.trim();
+		if (!description || !merchant) return;
+		const version = ++line.lookupVersion;
+		const currentMerchantVersion = merchantVersion;
+		const currentReceiptId = receipt.id;
+		try {
+			const result = await api.getCategorySuggestion(merchant, description);
+			if (
+				line.lookupVersion !== version ||
+				merchantVersion !== currentMerchantVersion ||
+				receipt.id !== currentReceiptId ||
+				!form.lines.includes(line) ||
+				line.description.trim() !== description ||
+				form.merchant_name.trim() !== merchant
+			)
+				return;
+			if (result.source !== 'history' || !result.category) return;
+			if (line.manualChoice) {
+				line.suggestion = result.category === line.spending_category ? null : result.category;
+			} else {
+				line.spending_category = result.category;
+				line.category_source = 'history';
+				line.suggestion = null;
+			}
+		} catch {
+			// History is optional; an unavailable lookup must not block receipt review.
+		}
+	}
+
+	function selectCategory(line: EditorLine, category: string) {
+		line.spending_category = category;
+		line.category_source = 'user';
+		line.manualChoice = true;
+		line.remember_category = true;
+		line.suggestion = null;
 	}
 
 	function removeLine(index: number) {
@@ -336,7 +454,8 @@
 					id="re-merchant"
 					class={inputClass}
 					value={form.merchant_name}
-					oninput={(e) => (form.merchant_name = (e.currentTarget as HTMLInputElement).value)}
+					oninput={(e) => changeMerchant((e.currentTarget as HTMLInputElement).value)}
+					onblur={() => form.lines.forEach((line) => void lookupCategory(line))}
 				/>
 			</div>
 			<div class="sm:col-span-2">
@@ -493,7 +612,7 @@
 			<p class="text-sm text-on-surface-variant">{$t('editor.noLineItems')}</p>
 		{:else}
 			<div class="space-y-3">
-				{#each form.lines as line, index (index)}
+				{#each form.lines as line, index (line)}
 					<div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
 						<div class="flex items-start gap-2">
 							<input
@@ -501,7 +620,9 @@
 								aria-label={$t('editor.description')}
 								placeholder={$t('editor.description')}
 								value={line.description}
-								oninput={(e) => (line.description = (e.currentTarget as HTMLInputElement).value)}
+								oninput={(e) =>
+									changeDescription(line, (e.currentTarget as HTMLInputElement).value)}
+								onblur={() => void lookupCategory(line)}
 							/>
 							<button
 								type="button"
@@ -512,6 +633,11 @@
 								<Icon icon="trash" />
 							</button>
 						</div>
+						{#if line.original_description && line.original_description !== line.description}
+							<p class="mt-1 text-xs text-on-surface-variant">
+								{$t('editor.originalDescription')}: {line.original_description}
+							</p>
+						{/if}
 						<div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
 							<div>
 								<label class={labelClass} for="li-{index}-qty">{$t('editor.quantity')}</label>
@@ -544,7 +670,58 @@
 								/>
 							</div>
 							<div class="col-span-2 sm:col-span-4">
-								<TagEditor value={line.tags} {tagOptions} id={`li-${index}`} />
+								<label class={labelClass} for="li-{index}-category"
+									>{$t('editor.spendingCategory')}</label
+								>
+								<div class="flex flex-wrap items-center gap-2">
+									<select
+										id="li-{index}-category"
+										class="{inputClass} flex-1"
+										value={line.spending_category}
+										onchange={(e) =>
+											selectCategory(line, (e.currentTarget as HTMLSelectElement).value)}
+									>
+										{#if !spendingCategories.some((option) => option.code === line.spending_category)}
+											<option value={line.spending_category}
+												>{$t(`spendingCategories.${line.spending_category}`)}</option
+											>
+										{/if}
+										{#each spendingCategories as option (option.code)}
+											<option value={option.code}>{$t(`spendingCategories.${option.code}`)}</option>
+										{/each}
+									</select>
+									<button
+										type="button"
+										class="rounded-lg border border-outline-variant px-3 py-2 text-xs hover:bg-surface-container-high"
+										disabled={line.spending_category === 'unknown' || line.remember_category}
+										onclick={() => selectCategory(line, line.spending_category)}
+										>{$t('editor.rememberCategory')}</button
+									>
+								</div>
+								<p class="mt-1 text-xs text-on-surface-variant">
+									{$t(`editor.categorySource.${line.category_source}`)}
+								</p>
+								{#if line.suggestion}
+									<button
+										type="button"
+										class="mt-1 text-xs text-primary underline"
+										onclick={() => selectCategory(line, line.suggestion ?? 'unknown')}
+									>
+										{$t('editor.historySuggestion', {
+											values: { category: $t(`spendingCategories.${line.suggestion}`) }
+										})}
+									</button>
+								{/if}
+							</div>
+							<div class="col-span-2 sm:col-span-4">
+								<details>
+									<summary class="cursor-pointer text-xs text-on-surface-variant"
+										>{$t('editor.optionalTags')}</summary
+									>
+									<div class="mt-2">
+										<TagEditor value={line.tags} {tagOptions} id={`li-${index}`} />
+									</div>
+								</details>
 							</div>
 						</div>
 					</div>

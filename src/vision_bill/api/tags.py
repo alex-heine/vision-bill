@@ -1,10 +1,12 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from ..model.item_category import CATEGORY_CODES
 from ..security.dependencies import get_current_user
+from ..security.models import User
 from ..service.receipt_service import ReceiptService
 from .helper.helper import get_receipt_service
 
@@ -17,6 +19,27 @@ class TagCreate(BaseModel):
     """Body for creating (or confirming) a tag in the vocabulary."""
 
     name: str = Field(min_length=1, max_length=100)
+
+
+@router.get("/categories")
+async def list_categories() -> list[dict[str, str]]:
+    """Stable codes for one spending category per line item."""
+    return [{"code": code} for code in CATEGORY_CODES]
+
+
+@router.get("/category-suggestion")
+async def category_suggestion(
+    merchant_name: str = Query(min_length=1),
+    description: str = Query(min_length=1),
+    receipt_service: ReceiptService = Depends(get_receipt_service),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> dict[str, str | None]:
+    if not receipt_service.db_ready:
+        raise HTTPException(status_code=503, detail="Database not available")
+    category = await receipt_service.get_category_suggestion(
+        current_user.id, merchant_name, description
+    )
+    return {"category": category, "source": "history" if category else None}
 
 
 @router.get("")

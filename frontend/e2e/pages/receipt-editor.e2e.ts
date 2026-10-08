@@ -29,6 +29,7 @@ test.describe('receipt editor', () => {
 		// confirmed by the assertion below.
 		// Fixture 'a' has multiple line items all tagged 'food'; use .first()
 		// to avoid Playwright strict-mode violation.
+		await page.getByText('Optional tags').first().click();
 		await expect(page.getByText('food').first()).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Verify' })).toBeVisible();
 	});
@@ -211,6 +212,7 @@ test.describe('receipt editor', () => {
 		// persist flow.  The brief's "create + keep" flow tests the same
 		// end-to-end behaviour (tag appears, persists after save) but via
 		// the create-option path which is flaky in Playwright.
+		await page.getByText('Optional tags').first().click();
 		await page.getByRole('button', { name: 'Tags' }).click();
 		await page.getByRole('option', { name: 'food' }).click();
 		await expect(page.getByText('food').first()).toBeVisible();
@@ -220,6 +222,7 @@ test.describe('receipt editor', () => {
 		await expect(page.getByText('Changes saved')).toBeVisible({ timeout: 15_000 });
 
 		await page.reload();
+		await page.getByText('Optional tags').first().click();
 		await expect(page.getByText('food')).toBeVisible();
 	});
 

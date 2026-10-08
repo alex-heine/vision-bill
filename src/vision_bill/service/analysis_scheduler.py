@@ -8,6 +8,7 @@ from ..config import Settings
 from ..model.db.image import ImageRow
 from ..provider.db.image_db import ImageDB
 from ..provider.llm.base import LLMProvider, ModelInfo
+from ..provider.llm.errors import AnalysisTimeoutError, UnreadableReceiptError
 from .image_service import ImageService
 from .receipt_service import ReceiptService
 
@@ -19,7 +20,7 @@ class PendingImageResult:
     """Outcome of analysing a single queued image."""
 
     image_id: UUID
-    status: str  # "analyzed" | "failed"
+    status: str  # analyzed | failed | timed_out | unreadable
     receipt_id: UUID | None = None
     error: str | None = None
 
@@ -52,6 +53,7 @@ class AnalysisScheduler:
         self._image_service = image_service
         self._interval = settings.worker.check_interval_seconds
         self._lock = asyncio.Lock()
+        self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
 
     @property
@@ -64,6 +66,7 @@ class AnalysisScheduler:
         if self._task is not None:
             logger.warning("Analysis scheduler already running - skipping start")
             return
+        self._wake.set()
         self._task = asyncio.create_task(self._run_forever())
         logger.info("Analysis scheduler started (interval=%ds)", self._interval)
 
@@ -78,9 +81,17 @@ class AnalysisScheduler:
         self._task = None
         logger.info("Analysis scheduler stopped")
 
+    def trigger(self) -> None:
+        """Wake the existing worker immediately; work remains persisted in PostgreSQL."""
+        self._wake.set()
+
     async def _run_forever(self) -> None:
         while True:
-            await asyncio.sleep(self._interval)
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=self._interval)
+            except TimeoutError:
+                pass
+            self._wake.clear()
             try:
                 await self.process_pending()
             except Exception:
@@ -106,7 +117,8 @@ class AnalysisScheduler:
 
     async def _process_pending_unlocked(self) -> list[PendingImageResult]:
         try:
-            models = await self._provider.get_available_models()
+            async with asyncio.timeout(5):
+                models = await self._provider.get_available_models()
         except Exception:  # noqa: BLE001 - worker boundary: any failure keeps images queued
             logger.warning("LLM provider unreachable - pending images stay queued")
             return []
@@ -124,7 +136,8 @@ class AnalysisScheduler:
             if claimed is None:
                 logger.info("Image %s was claimed by another worker", image.id)
                 continue
-            results.append(await self._analyze_one(claimed, model_id))
+            chosen = claimed.model_id if claimed.model_id in {m.id for m in models} else model_id
+            results.append(await self._analyze_one(claimed, chosen))
         return results
 
     async def _analyze_one(self, image: ImageRow, model_id: str) -> PendingImageResult:
@@ -147,7 +160,14 @@ class AnalysisScheduler:
             return PendingImageResult(image_id=image.id, status="failed", error=error)
 
         try:
-            receipt = await self._receipt_service.analyse_receipt_from_path(model_id, image_path)
+            paths = [Path(part.image_path) for part in image.parts()]
+            receipt = await self._receipt_service.analyse_receipt_from_path(
+                model_id, paths if image.additional_images else image_path
+            )
+        except (AnalysisTimeoutError, UnreadableReceiptError) as exc:
+            status = "timed_out" if isinstance(exc, AnalysisTimeoutError) else "unreadable"
+            await self._image_db.mark_terminal(image.id, status, str(exc))
+            return PendingImageResult(image_id=image.id, status=status, error=str(exc))
         except Exception as e:  # noqa: BLE001 - worker boundary: fail the image, never the cycle
             # The provider already exhausted its self-correction retry loop.
             await self._image_db.mark_failed(image.id, str(e))
@@ -175,6 +195,8 @@ class AnalysisScheduler:
                     await self._image_db.update_image_path(image.id, str(perm_path))
                 if perm_thumb is not None:
                     await self._image_db.update_image_thumbnail_path(image.id, str(perm_thumb))
+                if image.additional_images:
+                    await self._receipt_service.move_additional_images(image, row.id)
             except Exception:
                 logger.exception(
                     "Failed to move bypass-reviewed image %s to permanent storage", image.id

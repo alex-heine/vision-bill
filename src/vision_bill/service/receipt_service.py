@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -7,10 +8,12 @@ from pathlib import Path
 from uuid import UUID
 
 import asyncpg
+import httpx
 from fastapi import UploadFile
+from openai import APITimeoutError
 
 from ..config import ImageSettings, PGSettings
-from ..model.db.image import ImageRow
+from ..model.db.image import ImagePart, ImageRow
 from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
 from ..model.receipt import Receipt
 from ..model.search import ProductSearchResponse
@@ -20,6 +23,7 @@ from ..provider.db.image_db import ImageDB
 from ..provider.db.receipt_db import ReceiptDB
 from ..provider.db.user_db import UserDB
 from ..provider.llm.base import LLMProvider, ModelInfo
+from ..provider.llm.errors import AnalysisTimeoutError
 from .image_service import ImageService
 
 logger = logging.getLogger(__name__)
@@ -85,6 +89,11 @@ class ReceiptService:
     async def list_tags(self) -> list[str]:
         """Return the allowed line-item tag vocabulary from the database."""
         return await self._db.list_tags()
+
+    async def get_category_suggestion(
+        self, user_id: UUID, merchant_name: str, description: str
+    ) -> str | None:
+        return await self._db.get_category_suggestion(user_id, merchant_name, description)
 
     async def create_tag(self, raw_name: str) -> tuple[str, bool]:
         """Normalize a tag name and make sure it exists in the tag vocabulary.
@@ -258,6 +267,8 @@ class ReceiptService:
         user_id: UUID | None = None,
         bypass_review: bool = False,
         thumbnail_path: str | None = None,
+        additional_images: list[ImagePart] | None = None,
+        model_id: str | None = None,
     ) -> ImageRow:
         return await self._image_db.store_image(
             image_path=image_path,
@@ -268,6 +279,8 @@ class ReceiptService:
             user_id=user_id,
             bypass_review=bypass_review,
             thumbnail_path=thumbnail_path,
+            additional_images=additional_images,
+            model_id=model_id,
         )
 
     async def claim_image_for_analysis(self, image_id: UUID) -> ImageRow | None:
@@ -302,6 +315,18 @@ class ReceiptService:
     async def mark_image_failed(self, image_id: UUID, error: str) -> None:
         await self._image_db.mark_failed(image_id, error)
 
+    async def mark_image_terminal(self, image_id: UUID, status: str, error: str) -> None:
+        await self._image_db.mark_terminal(image_id, status, error)
+
+    async def move_additional_images(self, image: ImageRow, receipt_id: UUID) -> None:
+        for part in image.additional_images:
+            path, thumb = self._image_service.store_perm_image(Path(part.image_path), receipt_id)
+            if path is not None:
+                part.image_path = str(path)
+            if thumb is not None:
+                part.thumbnail_path = str(thumb)
+            await self._image_db.update_additional_images(image.id, image.additional_images)
+
     async def update_image_path(self, image_id: UUID, image_path: str) -> None:
         await self._image_db.update_image_path(image_id, image_path)
 
@@ -325,16 +350,21 @@ class ReceiptService:
         """The tag vocabulary for the prompt; empty when the database is unavailable."""
         return await self._db.list_tags() if self.db_ready else []
 
-    async def analyse_receipt_from_path(self, model_id: str, image_path: Path) -> Receipt:
+    async def analyse_receipt_from_path(
+        self, model_id: str, image_path: Path | Sequence[Path]
+    ) -> Receipt:
         """Run LLM extraction on an image file whose lifetime the caller owns."""
         logger.info("Analysing receipt using model: %s", model_id)
         tags = await self._available_tags()
         try:
-            result = await self._provider.analyse_receipt_from_model(
-                model_id, image_path, tags=tags
-            )
+            async with asyncio.timeout(self._provider.analysis_timeout_seconds):
+                result = await self._provider.analyse_receipt_from_model(
+                    model_id, image_path, tags=tags
+                )
             logger.info("Successfully analysed receipt with model: %s", model_id)
             return result
+        except (TimeoutError, httpx.TimeoutException, APITimeoutError) as exc:
+            raise AnalysisTimeoutError("The LLM request timed out. Please try again.") from exc
         except Exception:
             logger.exception("Failed to analyse receipt with model %s", model_id)
             raise

@@ -1,5 +1,6 @@
 import type {
 	AnalyzeResponse,
+	CategorySuggestion,
 	Collection,
 	CollectionCreate,
 	CollectionDetail,
@@ -8,6 +9,7 @@ import type {
 	ImageCreated,
 	ImageListFilters,
 	ImageRow,
+	ItemSpendingStatistics,
 	ProductSearchResponse,
 	ReceiptListFilters,
 	ReceiptRow,
@@ -16,6 +18,7 @@ import type {
 	ReceiptWrite,
 	SettingsUpdate,
 	SettingsView,
+	SpendingCategory,
 	User,
 	UiConfig
 } from '$lib/types';
@@ -38,7 +41,11 @@ export class ApiError extends Error {
 
 	detail: string;
 
-	constructor(status: number, detail: string) {
+	constructor(
+		status: number,
+		detail: string,
+		public imageId?: string
+	) {
 		super(detail);
 		this.name = 'ApiError';
 		this.status = status;
@@ -63,8 +70,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 			unauthorizedHandler?.();
 		}
 		let detail = `${response.status} ${response.statusText}`;
+		let imageId: string | undefined;
 		try {
 			const body: unknown = await response.json();
+			if (
+				body &&
+				typeof body === 'object' &&
+				'image_id' in body &&
+				typeof body.image_id === 'string'
+			) {
+				imageId = body.image_id;
+			}
 			if (body && typeof body === 'object' && 'detail' in body) {
 				const raw = (body as { detail: unknown }).detail;
 				detail = typeof raw === 'string' ? raw : JSON.stringify(raw);
@@ -72,7 +88,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 		} catch {
 			// Non-JSON error body: keep the status text.
 		}
-		throw new ApiError(response.status, detail);
+		throw new ApiError(response.status, detail, imageId);
 	}
 
 	if (response.status === 204) {
@@ -98,9 +114,9 @@ export const api = {
 	 * Upload a receipt image. With `bypassReview` the receipt is persisted
 	 * directly as `verified` (no manual review step).
 	 */
-	async uploadImage(file: File, bypassReview = false): Promise<ImageCreated> {
+	async uploadImage(file: File | File[], bypassReview = false): Promise<ImageCreated> {
 		const form = new FormData();
-		form.append('receipt', file);
+		for (const image of Array.isArray(file) ? file : [file]) form.append('receipt', image);
 		return request<ImageCreated>(
 			`/images${toQueryString({ bypass_review: String(bypassReview) })}`,
 			{
@@ -117,6 +133,12 @@ export const api = {
 	getStatistics(weeks = 12, collectionId?: string): Promise<ReceiptStatistics> {
 		return request<ReceiptStatistics>(
 			`/statistics${toQueryString({ weeks, collection_id: collectionId })}`
+		);
+	},
+
+	getItemStatistics(months = 12, collectionId?: string): Promise<ItemSpendingStatistics> {
+		return request<ItemSpendingStatistics>(
+			`/statistics/items${toQueryString({ months, collection_id: collectionId })}`
 		);
 	},
 
@@ -190,8 +212,8 @@ export const api = {
 	},
 
 	/** URL for <img> tags / opening in a new tab (not used via fetch). */
-	imageFileUrl(id: string): string {
-		return `${API_BASE}/images/${id}/file`;
+	imageFileUrl(id: string, part = 0): string {
+		return `${API_BASE}/images/${id}/file${part ? `?part=${part}` : ''}`;
 	},
 
 	/** URL for the small WebP thumbnail (not used via fetch). */
@@ -239,6 +261,16 @@ export const api = {
 	/** GET /tags returns the line-item tag vocabulary (the select source). */
 	listTags(): Promise<string[]> {
 		return request<string[]>('/tags');
+	},
+
+	listSpendingCategories(): Promise<SpendingCategory[]> {
+		return request<SpendingCategory[]>('/tags/categories');
+	},
+
+	getCategorySuggestion(merchantName: string, description: string): Promise<CategorySuggestion> {
+		return request<CategorySuggestion>(
+			`/tags/category-suggestion${toQueryString({ merchant_name: merchantName, description })}`
+		);
 	},
 
 	/**

@@ -11,9 +11,11 @@ from uuid import UUID
 
 import pytest
 
+from vision_bill.api.receipts import LineItemUpdate, ReceiptUpdate
 from vision_bill.config import Settings
 from vision_bill.model.receipt import LineItem, Receipt, TaxLine
 from vision_bill.provider.db.receipt_db import (
+    DELETE_CATEGORY_ALIAS_SQL,
     DELETE_LINE_ITEMS_SQL,
     DELETE_RECEIPT_SQL,
     DELETE_TAXES_SQL,
@@ -25,6 +27,7 @@ from vision_bill.provider.db.receipt_db import (
     LIST_RECEIPTS_BASE_SQL,
     LIST_TAGS_SQL,
     SEARCH_PRODUCTS_BASE_SQL,
+    UPSERT_CATEGORY_ALIAS_SQL,
     ReceiptDB,
 )
 
@@ -38,6 +41,13 @@ TAX_ID = UUID("00000000-0000-4000-8000-000000000005")
 
 def _make_pool(conn: AsyncMock) -> MagicMock:
     """Build a mock pool whose acquire() yields the given conn."""
+    conn.transaction = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=None),
+            __aexit__=AsyncMock(return_value=None),
+        )
+    )
+    conn.fetch = AsyncMock(return_value=[])
     pool = MagicMock()
     pool.acquire = MagicMock(
         return_value=AsyncMock(
@@ -624,9 +634,10 @@ async def test_create_tag_existing_is_not_an_error(db: ReceiptDB) -> None:
     assert "ON CONFLICT (name) DO NOTHING" in insert_sql
 
 
-def test_insert_line_item_sql_has_no_category_column() -> None:
-    """Line items no longer persist a category; the receipt owns it."""
-    assert "category" not in INSERT_LINE_ITEM_SQL
+def test_insert_line_item_sql_has_spending_category() -> None:
+    """Item spending categories are separate from the receipt-level category."""
+    assert "spending_category" in INSERT_LINE_ITEM_SQL
+    assert "category_source" in INSERT_LINE_ITEM_SQL
 
 
 @pytest.mark.asyncio
@@ -736,3 +747,92 @@ def test_list_sql_exposes_thumbnail_path() -> None:
     """List query must expose thumbnail_path via correlated subquery."""
     assert "thumbnail_path" in LIST_RECEIPTS_BASE_SQL
     assert "FROM receipts r" in LIST_RECEIPTS_BASE_SQL
+
+
+@pytest.mark.asyncio
+async def test_confirmed_history_overrides_model_without_learning(db: ReceiptDB) -> None:
+    conn = AsyncMock()
+    db._pool = _make_pool(conn)
+    owner = UUID("00000000-0000-4000-8000-000000000099")
+    conn.fetchrow = AsyncMock(return_value=_receipt_row(user_id=owner))
+    conn.fetch = AsyncMock(return_value=[{"description_key": "item a", "category": "milk"}])
+    receipt = _make_receipt()
+    receipt.line_items[0].spending_category = "cheese"
+
+    await db.persist_receipt(receipt, user_id=owner, verified=True)
+
+    inserted = next(c for c in conn.execute.call_args_list if c.args[0] == INSERT_LINE_ITEM_SQL)
+    assert inserted.args[9:12] == ("milk", "history", "Item A")
+    assert conn.fetch.await_args.args[1] == owner
+    assert not any(c.args[0] == UPSERT_CATEGORY_ALIAS_SQL for c in conn.execute.call_args_list)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("remember", [False, True])
+async def test_update_preserves_original_and_owner_history(
+    db: ReceiptDB, remember: bool
+) -> None:
+    conn = AsyncMock()
+    db._pool = _make_pool(conn)
+    owner = UUID("00000000-0000-4000-8000-000000000099")
+    admin = UUID("00000000-0000-4000-8000-000000000098")
+    conn.fetchrow = AsyncMock(return_value=_receipt_row(user_id=owner))
+    conn.fetch = AsyncMock(return_value=[{
+        **_line_item_row(), "description": "Milk", "original_description": "H-MILCH 1,5%",
+        "spending_category": "milk", "category_source": "user",
+    }])
+    receipt = ReceiptUpdate.model_validate(_make_receipt().model_dump())
+    receipt.line_items = [LineItemUpdate(
+        id=LINE_ITEM_ID, description="Organic milk", quantity=1,
+        unit_price=Decimal(2), total_price=Decimal(2),
+        remember_category=remember,
+    )]
+
+    await db.update_receipt(RECEIPT_ID, receipt, user_id=admin, can_see_all=True)
+
+    inserted = next(c for c in conn.execute.call_args_list if c.args[0] == INSERT_LINE_ITEM_SQL)
+    assert inserted.args[8:12] == (LINE_ITEM_ID, "milk", "user", "H-MILCH 1,5%")
+    aliases = [c for c in conn.execute.call_args_list if c.args[0] == UPSERT_CATEGORY_ALIAS_SQL]
+    assert len(aliases) == (2 if remember else 0)
+    if remember:
+        assert {c.args[3] for c in aliases} == {"h-milch 1,5%", "organic milk"}
+        assert all(c.args[1] == owner for c in aliases)
+
+
+@pytest.mark.asyncio
+async def test_legacy_replacement_does_not_inherit_removed_item(db: ReceiptDB) -> None:
+    conn = AsyncMock()
+    db._pool = _make_pool(conn)
+    conn.fetchrow = AsyncMock(return_value=_receipt_row())
+    conn.fetch = AsyncMock(return_value=[{
+        **_line_item_row(), "description": "Removed item",
+        "original_description": "Removed item", "spending_category": "milk",
+        "category_source": "user",
+    }])
+    receipt = _make_receipt()
+    await db.update_receipt(RECEIPT_ID, receipt)
+    inserted = next(c for c in conn.execute.call_args_list if c.args[0] == INSERT_LINE_ITEM_SQL)
+    assert inserted.args[8:12] == (None, "unknown", "unknown", "Item A")
+
+
+@pytest.mark.asyncio
+async def test_explicit_unknown_removes_both_confirmed_aliases(db: ReceiptDB) -> None:
+    conn = AsyncMock()
+    db._pool = _make_pool(conn)
+    owner = UUID("00000000-0000-4000-8000-000000000099")
+    conn.fetchrow = AsyncMock(return_value=_receipt_row(user_id=owner))
+    conn.fetch = AsyncMock(return_value=[{
+        **_line_item_row(), "description": "Milk", "original_description": "H-MILCH 1,5%",
+        "spending_category": "milk", "category_source": "history",
+    }])
+    receipt = ReceiptUpdate.model_validate(_make_receipt().model_dump())
+    receipt.line_items = [LineItemUpdate(
+        id=LINE_ITEM_ID, description="Milk", quantity=1,
+        unit_price=Decimal(2), total_price=Decimal(2),
+        spending_category="unknown", remember_category=True,
+    )]
+    await db.update_receipt(RECEIPT_ID, receipt, user_id=owner)
+    inserted = next(c for c in conn.execute.call_args_list if c.args[0] == INSERT_LINE_ITEM_SQL)
+    assert inserted.args[9:11] == ("unknown", "user")
+    deletes = [c for c in conn.execute.call_args_list if c.args[0] == DELETE_CATEGORY_ALIAS_SQL]
+    assert {c.args[3] for c in deletes} == {"h-milch 1,5%", "milk"}

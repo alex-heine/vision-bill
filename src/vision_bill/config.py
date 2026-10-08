@@ -48,6 +48,8 @@ class LLMSettings(BaseModel):
     api_key: str  # Used for external LLMs
     model_name: str
     temperature: float
+    # Keep the complete extraction deadline below the 15-minute image claim lease.
+    analysis_timeout_seconds: float = Field(default=600, gt=0, le=600)
 
 
 class ApiSettings(BaseModel):

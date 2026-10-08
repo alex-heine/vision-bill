@@ -1,4 +1,5 @@
-export type ImageStatus = 'pending' | 'processing' | 'analyzed' | 'failed';
+export type ImageStatus =
+	'pending' | 'processing' | 'analyzed' | 'failed' | 'timed_out' | 'unreadable';
 
 export type ReceiptStatus = 'unverified' | 'verified';
 
@@ -16,6 +17,7 @@ export type PaymentMethod =
 	'cash' | 'credit_card' | 'debit_card' | 'mobile_payment' | 'check' | 'other' | 'unknown';
 
 export interface ImageRow {
+	additional_images?: { original_filename: string | null }[];
 	id: string;
 	original_filename: string | null;
 	media_type: string | null;
@@ -62,11 +64,43 @@ export interface LineItemRow {
 	id: string;
 	receipt_id: string;
 	description: string;
+	original_description: string | null;
 	quantity: number;
 	unit_price: string;
 	total_price: string;
-	category: Category;
+	spending_category: string;
+	category_source: 'llm' | 'history' | 'user' | 'unknown';
 	tags: string[];
+}
+
+export interface SpendingCategory {
+	code: string;
+}
+
+export interface CategorySuggestion {
+	category: string | null;
+	source: 'history' | null;
+}
+
+export interface ItemSpendingStatistics {
+	months: number;
+	date_from: string;
+	date_to: string;
+	categories: { category: string; currency: string; total: string; share: string | null }[];
+	monthly: {
+		month: string;
+		category: string;
+		currency: string;
+		total: string;
+		share: string | null;
+	}[];
+	reconciliation: {
+		currency: string;
+		receipt_total: string;
+		item_total: string;
+		deposit_total: string;
+		unallocated_total: string;
+	}[];
 }
 
 export interface TaxLineRow {
@@ -182,11 +216,13 @@ export interface SettingsUpdate {
 }
 
 export interface LineItemWrite {
+	id?: string;
 	description: string;
 	quantity: number;
 	unit_price: string;
 	total_price: string;
-	category?: Category;
+	spending_category: string;
+	remember_category?: boolean;
 	tags?: string[];
 }
 

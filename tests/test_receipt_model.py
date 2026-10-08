@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import pytest
 
+from vision_bill.model.item_category import CATEGORY_CODES, normalize_history_key
 from vision_bill.model.receipt import MAX_TAG_LENGTH, LineItem, Receipt
 
 
@@ -52,6 +53,19 @@ def test_line_item_tag_sanitization(raw: list[str], expected: list[str]) -> None
 
 def test_line_item_tags_default_to_empty() -> None:
     assert _line_item().tags == []
+
+
+def test_spending_category_schema_and_unknown_model_output() -> None:
+    schema = Receipt.model_json_schema()
+    category = schema["$defs"]["LineItem"]["properties"]["spending_category"]
+    assert category["enum"] == list(CATEGORY_CODES)
+    assert _line_item(spending_category="milk").spending_category == "milk"
+    assert _line_item(spending_category="invented_category").spending_category == "unknown"
+
+
+def test_history_key_preserves_product_numbers_and_punctuation() -> None:
+    assert normalize_history_key("  H-MILCH   1,5%  ") == "h-milch 1,5%"
+    assert normalize_history_key("H-MILCH 3,5%") != normalize_history_key("H-MILCH 1,5%")
 
 
 def test_line_item_has_no_category_field() -> None:

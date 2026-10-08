@@ -31,6 +31,7 @@ OTHER_IMAGE_ID = UUID("00000000-0000-4000-8000-000000000004")
 def mock_provider() -> MagicMock:
     """Fixture for a mocked LLM provider."""
     provider = MagicMock(spec=LLMProvider)
+    provider.analysis_timeout_seconds = 600
     provider.analyse_receipt_from_model = AsyncMock()
     provider.get_available_models = AsyncMock(return_value=[])
     return provider
@@ -784,6 +785,8 @@ async def test_store_image_delegates(delegation_context: DelegationContext) -> N
         user_id=None,
         bypass_review=True,
         thumbnail_path=None,
+        additional_images=None,
+        model_id=None,
     )
     assert result is row
 

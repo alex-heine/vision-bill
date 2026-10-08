@@ -89,8 +89,11 @@
 
 	const queue = createQuery(
 		() => ({
-			queryKey: queryKeys.images({ status: ['pending', 'failed'] }),
-			queryFn: () => api.listImages({ status: ['pending', 'failed'] }),
+			queryKey: queryKeys.images({
+				status: ['pending', 'processing', 'failed', 'timed_out', 'unreadable']
+			}),
+			queryFn: () =>
+				api.listImages({ status: ['pending', 'processing', 'failed', 'timed_out', 'unreadable'] }),
 			staleTime: 30_000,
 			refetchInterval: 30_000,
 			enabled: currentUser !== null

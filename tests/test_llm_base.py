@@ -62,11 +62,12 @@ def test_build_prompt_without_tags_allows_free_form_tags():
     assert "Prefer tags from this list" not in prompt
 
 
-def test_build_prompt_mentions_negative_pfand_line_items():
-    """The prompt must tell the model that refund/deposit (Pfand) line items are negative."""
+def test_build_prompt_distinguishes_deposit_charge_and_refund():
+    """Deposit charges cost money; returns credit money back."""
     prompt = _ConcreteProvider().build_prompt()
 
-    assert "negative unit_price and total_price" in prompt
+    assert "positive unit_price and total_price for deposit/Pfand charges" in prompt
+    assert "negative prices" in prompt
     assert "Pfand" in prompt
 
 
@@ -74,8 +75,8 @@ def test_build_prompt_tells_to_use_deposit_tag_for_deposit_pfand_lines():
     """The prompt must tell the model to mark deposit/Pfand line items with the `deposit` tag."""
     prompt = _ConcreteProvider().build_prompt()
 
-    assert "the tag `deposit`" in prompt
-    assert "container/Pfand" in prompt
+    assert "Tag every deposit charge or return with `deposit`" in prompt
+    assert "spending_category to deposit" in prompt
 
 
 @pytest.mark.parametrize(

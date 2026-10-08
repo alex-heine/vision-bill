@@ -4,9 +4,11 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import model_validator
 
 from ..model.db.receipt import ReceiptRow, ReceiptWithDetails
-from ..model.receipt import Receipt
+from ..model.item_category import CATEGORY_CODE_SET
+from ..model.receipt import LineItem, Receipt
 from ..security.dependencies import get_current_user
 from ..security.models import User
 from ..service.collection_service import CollectionService, NotFoundError
@@ -19,6 +21,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
+class LineItemUpdate(LineItem):
+    id: UUID | None = None
+    remember_category: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _check_category(cls, value: object) -> object:
+        if isinstance(value, dict):
+            category = value.get("spending_category", "unknown")
+            if not isinstance(category, str) or category not in CATEGORY_CODE_SET:
+                raise ValueError("Unsupported spending category")
+        return value
+
+
 class ReceiptUpdate(Receipt):
     """PUT body: the receipt fields plus the collection membership to set.
 
@@ -27,6 +43,7 @@ class ReceiptUpdate(Receipt):
     """
 
     collection_ids: list[UUID] | None = None
+    line_items: list[LineItemUpdate]  # type: ignore[assignment]  # Pydantic parses PUT-only fields
 
 
 @router.get("")
@@ -100,9 +117,12 @@ async def update_receipt(
 ) -> ReceiptRow:
     if not receipt_service.db_ready:
         raise HTTPException(status_code=503, detail="Database not available")
-    row = await receipt_service.update_receipt(
-        receipt_id, receipt, user_id=current_user.id, can_see_all=current_user.can_see_all
-    )
+    try:
+        row = await receipt_service.update_receipt(
+            receipt_id, receipt, user_id=current_user.id, can_see_all=current_user.can_see_all
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if row is None:
         raise HTTPException(status_code=404, detail="Receipt not found")
     if receipt.collection_ids is not None:
@@ -150,6 +170,8 @@ async def verify_receipt(
                 await receipt_service.update_image_path(row.image_id, str(new_path))
             if new_thumb is not None:
                 await receipt_service.update_image_thumbnail_path(row.image_id, str(new_thumb))
+            if image.additional_images:
+                await receipt_service.move_additional_images(image, receipt_id)
 
     verified = await receipt_service.verify_receipt(
         receipt_id, user_id=current_user.id, can_see_all=current_user.can_see_all
@@ -191,6 +213,7 @@ async def delete_receipt(
         )
         if image is not None:
             await receipt_service.delete_image_row(image.id)
-            if image.image_path:
-                image_service.delete_image(Path(image.image_path))
+            for part in image.parts():
+                if part.image_path:
+                    image_service.delete_image(Path(part.image_path))
     return {"deleted": receipt_id}

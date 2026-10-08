@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date as Date
 from datetime import time as Time
 from decimal import Decimal
@@ -15,6 +16,7 @@ from ...model.db.receipt import (
     ReceiptWithDetails,
     TaxLineRow,
 )
+from ...model.item_category import CATEGORY_CODE_SET, normalize_history_key
 from ...model.receipt import Receipt
 from ...model.search import ProductPurchase
 from ...model.statistics import (
@@ -92,8 +94,28 @@ DELETE_RECEIPT_SQL = "DELETE FROM receipts WHERE id = $1 RETURNING *"
 INSERT_LINE_ITEM_SQL = """
     INSERT INTO line_items
         (receipt_id, description, quantity, unit_price,
-         total_price, tags, position)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+         total_price, tags, position, id, spending_category, category_source,
+         original_description)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, gen_random_uuid()), $9, $10, $11)
+"""
+
+GET_CATEGORY_ALIAS_SQL = """
+    SELECT category FROM item_category_aliases
+    WHERE user_id = $1 AND merchant_key = $2 AND description_key = $3
+"""
+LIST_CATEGORY_ALIASES_SQL = """
+    SELECT description_key, category FROM item_category_aliases
+    WHERE user_id = $1 AND merchant_key = $2 AND description_key = ANY($3::text[])
+"""
+UPSERT_CATEGORY_ALIAS_SQL = """
+    INSERT INTO item_category_aliases (user_id, merchant_key, description_key, category)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (user_id, merchant_key, description_key)
+    DO UPDATE SET category = EXCLUDED.category
+"""
+DELETE_CATEGORY_ALIAS_SQL = """
+    DELETE FROM item_category_aliases
+    WHERE user_id = $1 AND merchant_key = $2 AND description_key = $3
 """
 
 INSERT_TAX_SQL = """
@@ -204,6 +226,14 @@ VERIFY_RECEIPT_SQL = (
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class ItemCategoryDecision:
+    id: UUID | None
+    original_description: str
+    category: str
+    source: str
+
+
 class ReceiptDB:
     """Owns the asyncpg pool and all SQL for receipts."""
 
@@ -277,6 +307,9 @@ class ReceiptDB:
             id=d["id"],
             receipt_id=d["receipt_id"],
             description=d["description"],
+            original_description=d.get("original_description"),
+            spending_category=d.get("spending_category", "unknown"),
+            category_source=d.get("category_source", "unknown"),
             quantity=float(d["quantity"]),
             unit_price=Decimal(d["unit_price"]),
             total_price=Decimal(d["total_price"]),
@@ -311,11 +344,12 @@ class ReceiptDB:
         )
 
     async def _insert_children(
-        self, conn: asyncpg.Connection, receipt_id: UUID, receipt: Receipt
+        self, conn: asyncpg.Connection, receipt_id: UUID, receipt: Receipt,
+        decisions: list[ItemCategoryDecision],
     ) -> None:
         """Insert the receipt's line items and taxes (shared insert logic)."""
         if receipt.line_items:
-            for index, item in enumerate(receipt.line_items):
+            for index, (item, decision) in enumerate(zip(receipt.line_items, decisions, strict=True)):
                 await conn.execute(
                     INSERT_LINE_ITEM_SQL,
                     receipt_id,
@@ -325,6 +359,10 @@ class ReceiptDB:
                     float(item.total_price),
                     list(item.tags),
                     index,
+                    decision.id,
+                    decision.category,
+                    decision.source,
+                    decision.original_description,
                 )
 
         if receipt.taxes:
@@ -336,6 +374,39 @@ class ReceiptDB:
                     tax.rate,
                     float(tax.amount),
                 )
+
+    async def get_category_suggestion(
+        self, user_id: UUID, merchant_name: str, description: str
+    ) -> str | None:
+        """Return only this user's confirmed exact mapping."""
+        merchant_key = normalize_history_key(merchant_name)
+        description_key = normalize_history_key(description)
+        if not merchant_key or not description_key:
+            return None
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                GET_CATEGORY_ALIAS_SQL, user_id, merchant_key, description_key
+            )
+        category = dict(row).get("category") if row is not None else None
+        return category if category in CATEGORY_CODE_SET and category != "unknown" else None
+
+    @staticmethod
+    async def _history_for_items(
+        conn: asyncpg.Connection, user_id: UUID | None, merchant_name: str,
+        descriptions: list[str],
+    ) -> dict[str, str]:
+        if user_id is None or not descriptions:
+            return {}
+        merchant_key = normalize_history_key(merchant_name)
+        keys = sorted({normalize_history_key(value) for value in descriptions if value.strip()})
+        if not merchant_key or not keys:
+            return {}
+        rows = await conn.fetch(LIST_CATEGORY_ALIASES_SQL, user_id, merchant_key, keys)
+        return {
+            row["description_key"]: row["category"]
+            for row in rows
+            if row["category"] in CATEGORY_CODE_SET and row["category"] != "unknown"
+        }
 
     # ── Persist extracted data ───────────────────────────────────────
 
@@ -376,7 +447,7 @@ class ReceiptDB:
             receipt.payment_method,
         )
 
-        async with self.pool.acquire() as conn:
+        async with self.pool.acquire() as conn, conn.transaction():
             row = None
             if image_id is not None:
                 row = await conn.fetchrow(
@@ -392,9 +463,26 @@ class ReceiptDB:
                     INSERT_RECEIPT_SQL, *values, status, image_id, verified, user_id
                 )
             receipt_id: UUID = row["id"]
+            history = await self._history_for_items(
+                conn, user_id, receipt.merchant_name,
+                [item.description for item in receipt.line_items],
+            )
+            decisions = []
+            for item in receipt.line_items:
+                category = history.get(normalize_history_key(item.description))
+                decisions.append(
+                    ItemCategoryDecision(
+                        id=None,
+                        original_description=item.description,
+                        category=category or item.spending_category,
+                        source="history" if category else (
+                            "llm" if item.spending_category != "unknown" else "unknown"
+                        ),
+                    )
+                )
             await conn.execute(DELETE_LINE_ITEMS_SQL, receipt_id)
             await conn.execute(DELETE_TAXES_SQL, receipt_id)
-            await self._insert_children(conn, receipt_id, receipt)
+            await self._insert_children(conn, receipt_id, receipt, decisions)
 
         return self._receipt_row_from_record(row)
 
@@ -434,14 +522,67 @@ class ReceiptDB:
             args.append(user_id)
             sql = sql.replace("RETURNING *", f"AND user_id = ${len(args)} RETURNING *", 1)
 
-        async with self.pool.acquire() as conn:
+        async with self.pool.acquire() as conn, conn.transaction():
             row = await conn.fetchrow(sql, *args)
             if row is None:
                 return None
 
+            owner_id: UUID | None = dict(row).get("user_id")
+            old_rows = [dict(old) for old in await conn.fetch(LIST_LINE_ITEMS_SQL, receipt_id)]
+            old_by_id = {old["id"]: old for old in old_rows}
+            old_by_position = {old["position"]: old for old in old_rows}
+            used_ids: set[UUID] = set()
+            decisions: list[ItemCategoryDecision] = []
+            merchant_key = normalize_history_key(receipt.merchant_name)
+            legacy_items = all(getattr(item, "id", None) is None for item in receipt.line_items)
+            for position, item in enumerate(receipt.line_items):
+                item_id: UUID | None = getattr(item, "id", None)
+                if item_id is not None and item_id not in old_by_id:
+                    raise ValueError("Line item id does not belong to this receipt")
+                old = old_by_id.get(item_id) if item_id is not None else None
+                if old is None and legacy_items and len(old_rows) == len(receipt.line_items):
+                    candidate = old_by_position.get(position)
+                    if candidate is not None and candidate["description"] == item.description:
+                        old = candidate
+                if old is not None and old["id"] in used_ids:
+                    raise ValueError("Duplicate line item id")
+                if old is not None:
+                    used_ids.add(old["id"])
+                original = (old.get("original_description") or old["description"]) if old else item.description
+                old_category = old.get("spending_category", "unknown") if old else "unknown"
+                old_source = old.get("category_source", "unknown") if old else "unknown"
+                explicit = "spending_category" in item.model_fields_set
+                changed = explicit and item.spending_category != old_category
+                remember = bool(getattr(item, "remember_category", False))
+                category = item.spending_category if changed or old is None else old_category
+                source = "user" if changed or remember else old_source
+                if old is None and explicit and category != "unknown":
+                    source = "user"
+                decisions.append(ItemCategoryDecision(
+                    id=old["id"] if old else None,
+                    original_description=original,
+                    category=category,
+                    source=source,
+                ))
+                if remember and owner_id is not None and merchant_key:
+                    for description_key in {
+                        normalize_history_key(original), normalize_history_key(item.description)
+                    }:
+                        if not description_key:
+                            continue
+                        if category == "unknown":
+                            await conn.execute(
+                                DELETE_CATEGORY_ALIAS_SQL, owner_id, merchant_key, description_key
+                            )
+                        else:
+                            await conn.execute(
+                                UPSERT_CATEGORY_ALIAS_SQL, owner_id, merchant_key,
+                                description_key, category,
+                            )
+
             await conn.execute(DELETE_LINE_ITEMS_SQL, receipt_id)
             await conn.execute(DELETE_TAXES_SQL, receipt_id)
-            await self._insert_children(conn, receipt_id, receipt)
+            await self._insert_children(conn, receipt_id, receipt, decisions)
 
         return self._receipt_row_from_record(row)
 

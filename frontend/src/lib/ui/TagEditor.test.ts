@@ -113,7 +113,7 @@ describe('TagEditor', () => {
 				expect.objectContaining({ method: 'POST' })
 			)
 		);
-		expect(value).toEqual(['veggie']);
+		await waitFor(() => expect(value).toEqual(['veggie']));
 		// The search clears after `await api.createTag(...)` resolves, so poll
 		// for the final DOM state rather than asserting synchronously.
 		await waitFor(() => expect((search as HTMLInputElement).value).toBe(''));
